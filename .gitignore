@@ -1,0 +1,14 @@
+node_modules/
+
+# Secrets — never commit real credentials
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+*.log
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
