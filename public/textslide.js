@@ -1,6 +1,6 @@
-// Builds a text slide. Shared by the TV screen and the admin preview (see textad.css).
-function renderTextAd(ad, el = document.createElement('div')) {
-  el.classList.add('text-ad');
+// Builds a text slide. Shared by the TV screen and the admin preview (see textslide.css).
+function renderTextSlide(ad, el = document.createElement('div')) {
+  el.classList.add('text-slide');
   el.style.background = ad.background || '#123a6b';
   el.style.color = ad.textColor || '#ffffff';
   el.style.setProperty('--accent', ad.accentColor || '#5fa82a');

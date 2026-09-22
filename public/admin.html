@@ -6,7 +6,7 @@
   <link rel="icon" href="data:," />
   <title>Ad Screen Admin — Northumberland Fitness</title>
   <link rel="stylesheet" href="admin.css" />
-  <link rel="stylesheet" href="textad.css" />
+  <link rel="stylesheet" href="textslide.css" />
 </head>
 <body>
   <!-- ---------- Login ---------- -->
@@ -46,9 +46,9 @@
             <h2>Ads in rotation</h2>
             <p class="muted small">Plays in this order, then loops (2× ads are spread evenly through it). Drag to reorder.</p>
           </div>
-          <button type="button" id="new-ad" class="btn primary">+ New ad</button>
+          <button type="button" id="new-spot" class="btn primary">+ New ad</button>
         </div>
-        <ol id="ad-list" class="ad-list"></ol>
+        <ol id="spot-list" class="spot-list"></ol>
         <div id="empty" class="empty" hidden>
           <p><strong>No ads yet.</strong></p>
           <p class="muted">Add an image, a video, or a simple text slide for a local business.</p>
@@ -85,7 +85,7 @@
 
   <!-- ---------- Ad editor ---------- -->
   <dialog id="editor" class="editor">
-    <form id="ad-form" method="dialog">
+    <form id="spot-form" method="dialog">
       <header class="editor-head">
         <h2 id="editor-title">New ad</h2>
         <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
@@ -212,12 +212,12 @@
         <p id="editor-error" class="error" role="alert"></p>
         <div id="upload-progress" class="progress" hidden><div></div></div>
         <button type="button" class="btn ghost" data-close>Cancel</button>
-        <button type="submit" class="btn primary" id="save-ad">Save ad</button>
+        <button type="submit" class="btn primary" id="save-spot">Save ad</button>
       </footer>
     </form>
   </dialog>
 
-  <script src="textad.js"></script>
+  <script src="textslide.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>

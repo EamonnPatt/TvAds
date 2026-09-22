@@ -119,7 +119,7 @@ app.get('/api/admin/state', requireAdmin, (req, res) => {
   res.json({ ...store.snapshot(), display: displayStatus });
 });
 
-app.post('/api/admin/ads', requireAdmin, upload.single('file'), (req, res) => {
+app.post('/api/admin/spots', requireAdmin, upload.single('file'), (req, res) => {
   const { fields, src } = parseAdRequest(req);
   if ((fields.type === 'image' || fields.type === 'video') && !src) {
     return res.status(400).json({ error: 'Choose an image or video file to upload.' });
@@ -127,7 +127,7 @@ app.post('/api/admin/ads', requireAdmin, upload.single('file'), (req, res) => {
   res.json(store.create(fields, src));
 });
 
-app.put('/api/admin/ads/:id', requireAdmin, upload.single('file'), (req, res) => {
+app.put('/api/admin/spots/:id', requireAdmin, upload.single('file'), (req, res) => {
   const { fields, src } = parseAdRequest(req);
   const existing = store.snapshot().ads.find((a) => a.id === req.params.id);
   if (existing && !src && fields.type && fields.type !== 'text' && fields.type !== existing.type) {
@@ -138,7 +138,7 @@ app.put('/api/admin/ads/:id', requireAdmin, upload.single('file'), (req, res) =>
   res.json(ad);
 });
 
-app.delete('/api/admin/ads/:id', requireAdmin, (req, res) => {
+app.delete('/api/admin/spots/:id', requireAdmin, (req, res) => {
   if (!store.remove(req.params.id)) return res.status(404).json({ error: 'Ad not found.' });
   res.json({ ok: true });
 });

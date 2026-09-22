@@ -1,15 +1,15 @@
 /* Text slides, shared by the TV screen and the admin preview.
    Sized in container units so the same markup scales from a thumbnail to a TV. */
-.text-ad {
+.text-slide {
   container-type: size;
   display: flex;
   align-items: stretch;
   overflow: hidden;
 }
 
-/* Padding lives on the inner box: container units on .text-ad itself would
+/* Padding lives on the inner box: container units on .text-slide itself would
    resolve against the page instead of the slide. */
-.text-ad .ta-inner {
+.text-slide .ta-inner {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -19,7 +19,7 @@
   text-align: left;
 }
 
-.text-ad .ta-business {
+.text-slide .ta-business {
   font-size: 3.4cqmin;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -30,7 +30,7 @@
   gap: 2cqmin;
 }
 
-.text-ad .ta-business::before {
+.text-slide .ta-business::before {
   content: '';
   width: 6cqmin;
   height: 0.8cqmin;
@@ -38,7 +38,7 @@
   background: var(--accent);
 }
 
-.text-ad .ta-headline {
+.text-slide .ta-headline {
   font-size: 10cqmin;
   line-height: 1.02;
   font-weight: 800;
@@ -48,7 +48,7 @@
   text-wrap: balance;
 }
 
-.text-ad .ta-body {
+.text-slide .ta-body {
   font-size: 4.2cqmin;
   line-height: 1.35;
   margin: 0;
@@ -57,7 +57,7 @@
   white-space: pre-line;
 }
 
-.text-ad .ta-footer {
+.text-slide .ta-footer {
   align-self: flex-start;
   margin-top: 2cqh;
   font-size: 4cqmin;

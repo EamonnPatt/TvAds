@@ -113,7 +113,7 @@ public/            Frontend (vanilla HTML/CSS/JS)
   display.js/.css    Ad player: rotation, transitions, fullscreen, heartbeat
   admin.html         Admin panel
   admin.js/.css      Admin panel logic and styles
-  textad.js/.css     Text-slide renderer shared by the TV and admin preview
+  textslide.js/.css     Text-slide renderer shared by the TV and admin preview
 server/            Backend (Express)
   index.js           API: login, playlist, ad upload/edit, TV heartbeat
   store.js           Saves ads + settings to DATA_DIR/ads.json

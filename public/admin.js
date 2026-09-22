@@ -207,7 +207,7 @@ function thumbFor(ad) {
   const box = el('div', { class: 'thumb' });
   if (ad.type === 'image') box.append(el('img', { src: ad.src, alt: '', loading: 'lazy' }));
   else if (ad.type === 'video') box.append(el('video', { src: `${ad.src}#t=1`, muted: true, preload: 'metadata' }));
-  else box.append(renderTextAd(ad));
+  else box.append(renderTextSlide(ad));
   return box;
 }
 
@@ -265,7 +265,7 @@ function renderSummary() {
 }
 
 function renderList() {
-  const list = $('#ad-list');
+  const list = $('#spot-list');
   $('#empty').hidden = state.ads.length > 0;
   const onScreenId = tvIsOnline() ? state.display.adId : null;
 
@@ -297,25 +297,25 @@ function renderList() {
 
       return el(
         'li',
-        { class: `ad-row ${ad.enabled ? '' : 'paused'}`, 'data-id': ad.id },
+        { class: `spot-row ${ad.enabled ? '' : 'paused'}`, 'data-id': ad.id },
         el('span', { class: 'handle', title: 'Drag to reorder', 'aria-hidden': 'true', onpointerdown: startDrag }, '⠿'),
         thumbFor(ad),
         el(
           'div',
-          { class: 'ad-info' },
+          { class: 'spot-info' },
           el(
             'div',
-            { class: 'ad-title' },
+            { class: 'spot-title' },
             ad.title,
             el('span', { class: `badge ${status.key}` }, status.label),
             ad.id === onScreenId ? el('span', { class: 'badge onscreen' }, 'On screen now') : null
           ),
-          el('div', { class: 'ad-meta' }, meta.map((m) => el('span', {}, m))),
-          ad.notes ? el('div', { class: 'ad-notes', title: ad.notes }, ad.notes) : null
+          el('div', { class: 'spot-meta' }, meta.map((m) => el('span', {}, m))),
+          ad.notes ? el('div', { class: 'spot-notes', title: ad.notes }, ad.notes) : null
         ),
         el(
           'div',
-          { class: 'ad-actions' },
+          { class: 'spot-actions' },
           el('button', { type: 'button', class: 'icon-btn', title: 'Move up', 'aria-label': 'Move up', disabled: i === 0, onclick: () => move(ad.id, -1) }, '↑'),
           el('button', { type: 'button', class: 'icon-btn', title: 'Move down', 'aria-label': 'Move down', disabled: i === state.ads.length - 1, onclick: () => move(ad.id, 1) }, '↓'),
           toggle,
@@ -339,7 +339,7 @@ function renderSettings() {
 // ---------- List actions ----------
 async function quickUpdate(ad, fields) {
   try {
-    await sendAd('PUT', `/api/admin/ads/${ad.id}`, fields);
+    await sendAd('PUT', `/api/admin/spots/${ad.id}`, fields);
     await refresh();
   } catch (err) {
     toast(err.message);
@@ -351,7 +351,7 @@ async function quickUpdate(ad, fields) {
 async function deleteAd(ad) {
   if (!confirm(`Delete “${ad.title}”? This removes it from the TV and deletes its file.`)) return;
   try {
-    await api(`/api/admin/ads/${ad.id}`, { method: 'DELETE' });
+    await api(`/api/admin/spots/${ad.id}`, { method: 'DELETE' });
     toast('Ad deleted');
     await refresh();
   } catch (err) {
@@ -380,7 +380,7 @@ function move(id, delta) {
 
 // Pointer-based dragging so it works with a mouse, touch screen, or iPad alike.
 function startDrag(e) {
-  const row = e.target.closest('.ad-row');
+  const row = e.target.closest('.spot-row');
   if (!row) return;
   e.preventDefault();
   dragging = true;
@@ -390,7 +390,7 @@ function startDrag(e) {
 
   const onMove = (ev) => {
     document.querySelectorAll('.drop-before, .drop-after').forEach((r) => r.classList.remove('drop-before', 'drop-after'));
-    const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.ad-row');
+    const over = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.spot-row');
     if (!over || over === row) {
       target = null;
       return;
@@ -423,7 +423,7 @@ function startDrag(e) {
 
 // ---------- Editor ----------
 const editor = $('#editor');
-const form = $('#ad-form');
+const form = $('#spot-form');
 const fileInput = $('#file-input');
 
 function currentType() {
@@ -496,7 +496,7 @@ function renderPreview() {
   box.replaceChildren();
 
   if (type === 'text') {
-    box.append(renderTextAd(textFields()));
+    box.append(renderTextSlide(textFields()));
     return;
   }
 
@@ -607,7 +607,7 @@ form.addEventListener('submit', async (e) => {
     ...(type === 'text' ? textFields() : { background: form.mediaBackground.value })
   };
 
-  const saveBtn = $('#save-ad');
+  const saveBtn = $('#save-spot');
   const bar = $('#upload-progress');
   saveBtn.disabled = true;
   saveBtn.textContent = file ? 'Uploading…' : 'Saving…';
@@ -616,8 +616,8 @@ form.addEventListener('submit', async (e) => {
 
   try {
     const onProgress = (p) => (bar.firstElementChild.style.width = `${Math.round(p * 100)}%`);
-    if (editing) await sendAd('PUT', `/api/admin/ads/${editing.id}`, fields, file, onProgress);
-    else await sendAd('POST', '/api/admin/ads', fields, file, onProgress);
+    if (editing) await sendAd('PUT', `/api/admin/spots/${editing.id}`, fields, file, onProgress);
+    else await sendAd('POST', '/api/admin/spots', fields, file, onProgress);
     editor.close();
     toast(editing ? 'Ad updated. The TV picks it up within 30 seconds.' : 'Ad added. The TV picks it up within 30 seconds.');
     await refresh();
@@ -630,7 +630,7 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-$('#new-ad').addEventListener('click', () => openEditor());
+$('#new-spot').addEventListener('click', () => openEditor());
 
 // ---------- Settings ----------
 $('#settings-form').addEventListener('submit', async (e) => {

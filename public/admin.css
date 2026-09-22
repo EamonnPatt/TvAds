@@ -292,7 +292,7 @@ input[type='color'] {
 }
 
 /* ---------- Ad list ---------- */
-.ad-list {
+.spot-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -300,7 +300,7 @@ input[type='color'] {
   gap: 10px;
 }
 
-.ad-row {
+.spot-row {
   display: grid;
   grid-template-columns: auto 128px 1fr auto;
   align-items: center;
@@ -310,20 +310,20 @@ input[type='color'] {
   border-radius: 10px;
   background: #fff;
 }
-.ad-row.paused {
+.spot-row.paused {
   background: #fafbfc;
 }
-.ad-row.paused .thumb,
-.ad-row.paused .ad-info {
+.spot-row.paused .thumb,
+.spot-row.paused .spot-info {
   opacity: 0.55;
 }
-.ad-row.dragging {
+.spot-row.dragging {
   opacity: 0.4;
 }
-.ad-row.drop-before {
+.spot-row.drop-before {
   box-shadow: 0 -3px 0 var(--blue);
 }
-.ad-row.drop-after {
+.spot-row.drop-after {
   box-shadow: 0 3px 0 var(--blue);
 }
 
@@ -350,15 +350,15 @@ input[type='color'] {
   height: 100%;
   object-fit: cover;
 }
-.thumb .text-ad {
+.thumb .text-slide {
   width: 100%;
   height: 100%;
 }
 
-.ad-info {
+.spot-info {
   min-width: 0;
 }
-.ad-title {
+.spot-title {
   font-weight: 700;
   font-size: 16px;
   display: flex;
@@ -366,7 +366,7 @@ input[type='color'] {
   gap: 8px;
   flex-wrap: wrap;
 }
-.ad-meta {
+.spot-meta {
   margin-top: 4px;
   font-size: 13px;
   color: var(--muted);
@@ -374,7 +374,7 @@ input[type='color'] {
   flex-wrap: wrap;
   gap: 4px 12px;
 }
-.ad-notes {
+.spot-notes {
   margin-top: 4px;
   font-size: 13px;
   color: var(--muted);
@@ -411,7 +411,7 @@ input[type='color'] {
   color: #fff;
 }
 
-.ad-actions {
+.spot-actions {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -600,7 +600,7 @@ input[type='color'] {
 .preview.fit-contain video {
   object-fit: contain;
 }
-.preview .text-ad {
+.preview .text-slide {
   width: 100%;
   height: 100%;
 }
@@ -755,13 +755,13 @@ input[type='color'] {
     position: static;
     order: -1;
   }
-  .ad-row {
+  .spot-row {
     grid-template-columns: auto 88px 1fr;
   }
   .thumb {
     width: 88px;
   }
-  .ad-actions {
+  .spot-actions {
     grid-column: 1 / -1;
     justify-content: flex-end;
   }

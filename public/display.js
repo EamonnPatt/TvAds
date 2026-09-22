@@ -152,7 +152,7 @@ function load(ad, gen) {
     media.src = ad.src;
     layer.appendChild(media);
   } else {
-    renderTextAd(ad, layer);
+    renderTextSlide(ad, layer);
   }
 
   layer.style.visibility = 'hidden';
