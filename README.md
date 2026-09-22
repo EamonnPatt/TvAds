@@ -9,6 +9,20 @@ password-protected admin panel for managing them.
 - **Admin panel** at `/admin`: add, edit, reorder, pause and schedule ads, and
   see what the TV is showing right now.
 
+## Where the ads come from
+
+The TV plays every image and video in the [`ads/`](ads/) folder, sorted by
+filename (`ad1`, `ad2`, `ad10`…). There's no database: to add, remove or swap an
+ad, change the files in that folder and commit/deploy. The TV picks up the new
+list within 30 seconds.
+
+- Videos play their full length (muted). Images stay up for 10 seconds, or
+  `IMAGE_SECONDS` if that's set in `.env`.
+- Supported files: `.mp4 .webm .mov .jpg .jpeg .png .webp .gif`.
+- Because the files are in the repo, they survive restarts on Render's free plan.
+- The admin panel's ad list no longer controls what the TV plays. Its
+  transition and idle-screen settings still apply.
+
 ## What an ad can be
 
 | Type | Use it for |
