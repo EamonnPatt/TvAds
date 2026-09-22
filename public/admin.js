@@ -128,6 +128,22 @@ async function start() {
 async function refresh() {
   state = await api('/api/admin/state');
   render();
+  measureFolderVideos();
+}
+
+// Folder videos arrive without a known length; measure them here so the loop length is right.
+const measured = new Set();
+function measureFolderVideos() {
+  for (const ad of state.ads) {
+    if (!ad.local || ad.type !== 'video' || ad.videoLength || measured.has(ad.src)) continue;
+    measured.add(ad.src);
+    const probe = document.createElement('video');
+    probe.preload = 'metadata';
+    probe.onloadedmetadata = () => {
+      if (Number.isFinite(probe.duration)) quickUpdate(ad, { videoLength: Math.round(probe.duration) });
+    };
+    probe.src = ad.src;
+  }
 }
 
 // ---------- Helpers ----------
@@ -139,6 +155,7 @@ function localToday() {
 function statusOf(ad) {
   const today = localToday();
   if (!ad.enabled) return { key: 'paused', label: 'Paused' };
+  if (ad.local && !state.settings.useLocalAds) return { key: 'paused', label: 'Folder ads off' };
   if (ad.startDate && ad.startDate > today) return { key: 'scheduled', label: `Starts ${fmtDate(ad.startDate)}` };
   if (ad.endDate && ad.endDate < today) return { key: 'expired', label: 'Ended' };
   return { key: 'live', label: 'Live' };
@@ -221,7 +238,7 @@ function render() {
   renderTvStatus();
   renderSummary();
   // Rebuilding the list reloads every thumbnail, so only do it when something shown there changed.
-  const key = JSON.stringify([state.ads, tvIsOnline() ? state.display.adId : null, localToday()]);
+  const key = JSON.stringify([state.ads, state.settings.useLocalAds, tvIsOnline() ? state.display.adId : null, localToday()]);
   if (key !== listKey) {
     listKey = key;
     renderList();
@@ -308,6 +325,7 @@ function renderList() {
             { class: 'spot-title' },
             ad.title,
             el('span', { class: `badge ${status.key}` }, status.label),
+            ad.local ? el('span', { class: 'badge folder', title: `ads/${ad.file}` }, 'Folder') : null,
             ad.id === onScreenId ? el('span', { class: 'badge onscreen' }, 'On screen now') : null
           ),
           el('div', { class: 'spot-meta' }, meta.map((m) => el('span', {}, m))),
@@ -320,7 +338,9 @@ function renderList() {
           el('button', { type: 'button', class: 'icon-btn', title: 'Move down', 'aria-label': 'Move down', disabled: i === state.ads.length - 1, onclick: () => move(ad.id, 1) }, '↓'),
           toggle,
           el('button', { type: 'button', class: 'icon-btn', onclick: () => openEditor(ad) }, 'Edit'),
-          el('button', { type: 'button', class: 'icon-btn danger', title: 'Delete', 'aria-label': `Delete ${ad.title}`, onclick: () => deleteAd(ad) }, trashIcon())
+          ad.local
+            ? null
+            : el('button', { type: 'button', class: 'icon-btn danger', title: 'Delete', 'aria-label': `Delete ${ad.title}`, onclick: () => deleteAd(ad) }, trashIcon())
         )
       );
     })
@@ -328,6 +348,7 @@ function renderList() {
 }
 
 function renderSettings() {
+  $('#use-local').checked = state.settings.useLocalAds !== false;
   const form = $('#settings-form');
   // Don't clobber what the user is typing during a background refresh.
   if (form.contains(document.activeElement)) return;
@@ -458,6 +479,8 @@ function openEditor(ad = null) {
   form.enabled.checked = a.enabled !== false;
   form.notes.value = a.notes || '';
   videoLength = a.videoLength || 0;
+  $('#local-note').hidden = !a.local;
+  $('#type-picker').hidden = Boolean(a.local);
 
   syncEditor();
   editor.showModal();
@@ -475,6 +498,7 @@ function syncEditor() {
   form.querySelectorAll('[data-show]').forEach((node) => {
     node.hidden = !node.dataset.show.split(' ').includes(type);
   });
+  if (editing?.local) $('#file-field').hidden = true;
 
   if (type !== 'text') {
     fileInput.accept = `${type}/*`;
@@ -633,6 +657,17 @@ form.addEventListener('submit', async (e) => {
 $('#new-spot').addEventListener('click', () => openEditor());
 
 // ---------- Settings ----------
+$('#use-local').addEventListener('change', async (e) => {
+  try {
+    state.settings = await api('/api/admin/settings', { method: 'PUT', body: { useLocalAds: e.target.checked } });
+    toast(e.target.checked ? 'Folder ads are on. The TV picks this up within 30 seconds.' : 'Folder ads are off. The TV picks this up within 30 seconds.');
+    render();
+  } catch (err) {
+    toast(err.message);
+    e.target.checked = !e.target.checked;
+  }
+});
+
 $('#settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;

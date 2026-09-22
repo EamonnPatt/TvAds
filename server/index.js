@@ -9,14 +9,13 @@ const store = require('./store');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
-const ADS_DIR = path.join(__dirname, '..', 'ads');
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(PUBLIC_DIR, { setHeaders: (res) => res.set('Cache-Control', 'no-store') }));
 // Uploaded files get unique names and never change, so the TV can cache them hard.
 app.use('/media', express.static(store.UPLOAD_DIR, { immutable: true, maxAge: '30d' }));
 // Ad URLs carry the file's modified time (?v=), so a replaced file gets a fresh URL.
-app.use('/ads', express.static(ADS_DIR, { maxAge: '30d' }));
+app.use('/ads', express.static(store.LOCAL_DIR, { maxAge: '30d' }));
 
 app.get('/admin', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'admin.html')));
 
@@ -100,46 +99,14 @@ function parseAdRequest(req) {
 }
 
 // ---------- Display (TV) ----------
-// The TV plays whatever files are in the repo's ads/ folder, in filename order.
-// Videos play their full length; images stay up for IMAGE_SECONDS.
-const IMAGE_SECONDS = Number(process.env.IMAGE_SECONDS) || 10;
-const AD_TYPES = {
-  '.mp4': 'video', '.webm': 'video', '.mov': 'video',
-  '.jpg': 'image', '.jpeg': 'image', '.png': 'image', '.webp': 'image', '.gif': 'image'
-};
-
-function folderAds() {
-  let files = [];
-  try {
-    files = fs.readdirSync(ADS_DIR).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  } catch (err) {
-    console.error('Could not read the ads folder:', err);
-  }
-  return files
-    .filter((name) => AD_TYPES[path.extname(name).toLowerCase()])
-    .map((name) => {
-      const stat = fs.statSync(path.join(ADS_DIR, name));
-      return {
-        id: `${name}:${stat.mtimeMs}`,
-        type: AD_TYPES[path.extname(name).toLowerCase()],
-        title: path.parse(name).name,
-        src: `/ads/${encodeURIComponent(name)}?v=${Math.round(stat.mtimeMs)}`,
-        duration: IMAGE_SECONDS,
-        playFullVideo: true,
-        muted: true,
-        fit: 'cover',
-        background: '#000000',
-        enabled: true,
-        playsPerLoop: 1
-      };
-    });
-}
-
 app.get('/api/playlist', (req, res) => {
-  const ads = folderAds();
-  // Changes whenever a file is added, removed or replaced, so the TV reloads its list.
-  const updatedAt = crypto.createHash('sha1').update(ads.map((a) => a.id).join('|')).digest('hex');
-  res.json({ ads, settings: store.snapshot().settings, updatedAt });
+  store.syncLocal();
+  const { ads, settings, updatedAt } = store.snapshot();
+  // Date windows are checked on the TV itself, in the gym's local timezone.
+  const publicAds = ads
+    .filter((a) => a.enabled && (!a.local || settings.useLocalAds))
+    .map(({ notes, ...ad }) => ad); // notes are admin-only
+  res.json({ ads: publicAds, settings, updatedAt });
 });
 
 let displayStatus = null; // what the TV last reported it was showing
@@ -155,6 +122,7 @@ app.post('/api/heartbeat', (req, res) => {
 
 // ---------- Admin ----------
 app.get('/api/admin/state', requireAdmin, (req, res) => {
+  store.syncLocal();
   res.json({ ...store.snapshot(), display: displayStatus });
 });
 
@@ -169,7 +137,11 @@ app.post('/api/admin/spots', requireAdmin, upload.single('file'), (req, res) => 
 app.put('/api/admin/spots/:id', requireAdmin, upload.single('file'), (req, res) => {
   const { fields, src } = parseAdRequest(req);
   const existing = store.snapshot().ads.find((a) => a.id === req.params.id);
-  if (existing && !src && fields.type && fields.type !== 'text' && fields.type !== existing.type) {
+  if (existing?.local && src) {
+    fs.rm(req.file.path, { force: true }, () => {});
+    return res.status(400).json({ error: 'This ad comes from the ads/ folder in the repo. Replace the file there instead.' });
+  }
+  if (existing && !existing.local && !src && fields.type && fields.type !== 'text' && fields.type !== existing.type) {
     return res.status(400).json({ error: `Upload a ${fields.type} file to switch this ad to ${fields.type}.` });
   }
   const ad = store.update(req.params.id, fields, src);
@@ -178,6 +150,9 @@ app.put('/api/admin/spots/:id', requireAdmin, upload.single('file'), (req, res) 
 });
 
 app.delete('/api/admin/spots/:id', requireAdmin, (req, res) => {
+  if (store.snapshot().ads.find((a) => a.id === req.params.id)?.local) {
+    return res.status(400).json({ error: 'This ad comes from the ads/ folder in the repo, so it can’t be deleted here. Pause it, or remove the file from the repo.' });
+  }
   if (!store.remove(req.params.id)) return res.status(404).json({ error: 'Ad not found.' });
   res.json({ ok: true });
 });

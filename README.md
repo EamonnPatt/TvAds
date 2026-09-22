@@ -11,17 +11,25 @@ password-protected admin panel for managing them.
 
 ## Where the ads come from
 
-The TV plays every image and video in the [`ads/`](ads/) folder, sorted by
-filename (`ad1`, `ad2`, `ad10`…). There's no database: to add, remove or swap an
-ad, change the files in that folder and commit/deploy. The TV picks up the new
-list within 30 seconds.
+There are two kinds of ads, and both show up in the admin panel's list:
 
-- Videos play their full length (muted). Images stay up for 10 seconds, or
-  `IMAGE_SECONDS` if that's set in `.env`.
-- Supported files: `.mp4 .webm .mov .jpg .jpeg .png .webp .gif`.
-- Because the files are in the repo, they survive restarts on Render's free plan.
-- The admin panel's ad list no longer controls what the TV plays. Its
-  transition and idle-screen settings still apply.
+- **Folder ads**: every image and video in the repo's [`ads/`](ads/) folder
+  (tagged "Folder" in the admin panel). New files are added to the end of the
+  list, in filename order. Because the files are in the repo, they survive
+  restarts on Render's free plan.
+- **Uploaded ads**: added through the admin panel's **+ New ad** button.
+
+The **Play folder ads** switch at the top of the list turns all the folder ads
+on or off at once. You can edit folder ads like any other ad (name, length,
+plays per loop, dates, fit, sound, order, pause). Two things can only be done in
+the repo: swapping the file and deleting the ad.
+
+Folder videos start out playing their full length, and folder images start at
+10 seconds. Supported files: `.mp4 .webm .mov .jpg .jpeg .png .webp .gif`.
+
+> Your edits to folder ads and the switch setting are saved in `ads.json`. On
+> Render's free plan that file is wiped on restart, so the folder ads go back to
+> their defaults (the files themselves stay).
 
 ## What an ad can be
 

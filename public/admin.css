@@ -267,6 +267,13 @@ input[type='color'] {
 .panel-head p {
   margin: 4px 0 0;
 }
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
 
 /* ---------- Summary ---------- */
 .summary {
@@ -405,6 +412,10 @@ input[type='color'] {
 .badge.expired {
   background: #fbe6de;
   color: var(--error);
+}
+.badge.folder {
+  background: #efe7fb;
+  color: #5b3a99;
 }
 .badge.onscreen {
   background: var(--navy);

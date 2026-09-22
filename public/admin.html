@@ -46,7 +46,13 @@
             <h2>Ads in rotation</h2>
             <p class="muted small">Plays in this order, then loops (2× ads are spread evenly through it). Drag to reorder.</p>
           </div>
-          <button type="button" id="new-spot" class="btn primary">+ New ad</button>
+          <div class="panel-head-actions">
+            <label class="check" title="Ads from the ads/ folder in the repo">
+              <input type="checkbox" id="use-local" />
+              <span>Play folder ads</span>
+            </label>
+            <button type="button" id="new-spot" class="btn primary">+ New ad</button>
+          </div>
         </div>
         <ol id="spot-list" class="spot-list"></ol>
         <div id="empty" class="empty" hidden>
@@ -98,6 +104,8 @@
             <input name="title" maxlength="120" required placeholder="e.g. Cobourg Physio" />
           </label>
 
+          <p id="local-note" class="muted small" hidden>This ad comes from the <strong>ads/</strong> folder in the repo. To swap its file, replace it there. Everything else can be changed here.</p>
+
           <fieldset class="segmented" id="type-picker">
             <legend>Ad type</legend>
             <label><input type="radio" name="type" value="image" checked /> Image</label>
@@ -106,7 +114,7 @@
           </fieldset>
 
           <!-- Image / video -->
-          <div data-show="image video">
+          <div data-show="image video" id="file-field">
             <label>
               <span id="file-label">Image file</span>
               <input type="file" name="file" id="file-input" accept="image/*" />

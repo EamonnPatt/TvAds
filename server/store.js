@@ -7,13 +7,21 @@ const crypto = require('crypto');
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'ads.json');
+// Ads committed to the repo. They show up in the admin panel like uploaded ads,
+// but their files can only be changed in the repo.
+const LOCAL_DIR = path.join(__dirname, '..', 'ads');
+const LOCAL_TYPES = {
+  '.mp4': 'video', '.webm': 'video', '.mov': 'video',
+  '.jpg': 'image', '.jpeg': 'image', '.png': 'image', '.webp': 'image', '.gif': 'image'
+};
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const DEFAULT_SETTINGS = {
   transition: 'fade', // 'fade' | 'slide' | 'none'
   idleTitle: 'Northumberland Fitness',
-  idleSubtitle: 'Advertise your business here: ask at the front desk'
+  idleSubtitle: 'Advertise your business here: ask at the front desk',
+  useLocalAds: true // play the ads in the repo's ads/ folder
 };
 
 function load() {
@@ -53,7 +61,9 @@ function sanitize(input, existing = {}) {
   const merged = { ...existing, ...input };
   return {
     id: existing.id,
-    type: ['image', 'video', 'text'].includes(merged.type) ? merged.type : 'text',
+    ...(existing.local ? { local: true, file: existing.file, mtime: existing.mtime } : {}),
+    // A folder ad's file (and so its type) can only be changed in the repo.
+    type: existing.local ? existing.type : ['image', 'video', 'text'].includes(merged.type) ? merged.type : 'text',
     title: str(merged.title, 120) || 'Untitled ad',
     src: existing.src || '',
     duration: clampInt(merged.duration, 3, 600, 15),
@@ -82,8 +92,56 @@ function removeMediaFile(src) {
   fs.rm(file, { force: true }, () => {});
 }
 
+function localSrc(file, mtime) {
+  return `/ads/${encodeURIComponent(file)}?v=${Math.round(mtime)}`;
+}
+
+// Brings the list in line with the ads/ folder: new files are added at the end,
+// replaced files get a fresh URL, and removed files drop out.
+function syncLocal() {
+  let files = [];
+  try {
+    files = fs
+      .readdirSync(LOCAL_DIR)
+      .filter((name) => LOCAL_TYPES[path.extname(name).toLowerCase()])
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.error('Could not read the ads folder:', err);
+  }
+  let changed = false;
+
+  const before = db.ads.length;
+  db.ads = db.ads.filter((a) => !a.local || files.includes(a.file));
+  if (db.ads.length !== before) changed = true;
+
+  for (const file of files) {
+    const mtime = fs.statSync(path.join(LOCAL_DIR, file)).mtimeMs;
+    const ad = db.ads.find((a) => a.local && a.file === file);
+    if (!ad) {
+      const type = LOCAL_TYPES[path.extname(file).toLowerCase()];
+      db.ads.push(
+        sanitize(
+          { type, title: path.parse(file).name, duration: 10, playFullVideo: type === 'video' },
+          { id: `local-${file}`, local: true, file, mtime, type, src: localSrc(file, mtime) }
+        )
+      );
+      changed = true;
+    } else if (ad.mtime !== mtime) {
+      ad.mtime = mtime;
+      ad.src = localSrc(file, mtime);
+      ad.videoLength = 0; // new file, length unknown until the admin page measures it
+      changed = true;
+    }
+  }
+  if (changed) save();
+}
+
+syncLocal();
+
 module.exports = {
   UPLOAD_DIR,
+  LOCAL_DIR,
+  syncLocal,
 
   snapshot() {
     return db;
@@ -100,7 +158,7 @@ module.exports = {
     const idx = db.ads.findIndex((a) => a.id === id);
     if (idx === -1) return null;
     const existing = db.ads[idx];
-    if (newSrc) {
+    if (newSrc && !existing.local) {
       removeMediaFile(existing.src);
       existing.src = newSrc;
     }
@@ -132,7 +190,8 @@ module.exports = {
     db.settings = {
       transition: ['fade', 'slide', 'none'].includes(input.transition) ? input.transition : db.settings.transition,
       idleTitle: input.idleTitle !== undefined ? str(input.idleTitle, 120) : db.settings.idleTitle,
-      idleSubtitle: input.idleSubtitle !== undefined ? str(input.idleSubtitle, 200) : db.settings.idleSubtitle
+      idleSubtitle: input.idleSubtitle !== undefined ? str(input.idleSubtitle, 200) : db.settings.idleSubtitle,
+      useLocalAds: input.useLocalAds !== undefined ? Boolean(input.useLocalAds) : db.settings.useLocalAds
     };
     save();
     return db.settings;
