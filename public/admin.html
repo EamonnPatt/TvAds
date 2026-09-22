@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Ad Screen Admin — Northumberland Fitness</title>
+  <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="textad.css" />
+</head>
+<body>
+  <!-- ---------- Login ---------- -->
+  <section id="login-view" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <h1>Ad Screen</h1>
+      <p class="muted">Northumberland Fitness</p>
+      <label>
+        <span>Admin password</span>
+        <input type="password" id="login-password" autocomplete="current-password" required autofocus />
+      </label>
+      <p id="login-error" class="error" role="alert"></p>
+      <button type="submit" class="btn primary block">Log in</button>
+    </form>
+  </section>
+
+  <!-- ---------- Main ---------- -->
+  <div id="app-view" hidden>
+    <header class="topbar">
+      <div class="brand">
+        <strong>Ad Screen</strong>
+        <span class="muted">Northumberland Fitness</span>
+      </div>
+      <div id="tv-status" class="tv-status" title="What the TV last reported"></div>
+      <div class="topbar-actions">
+        <a class="btn ghost" href="/" target="_blank" rel="noopener">Open TV screen ↗</a>
+        <button type="button" id="logout" class="btn ghost">Log out</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="summary" id="summary"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Ads in rotation</h2>
+            <p class="muted small">Plays in this order, then loops (2× ads are spread evenly through it). Drag to reorder.</p>
+          </div>
+          <button type="button" id="new-ad" class="btn primary">+ New ad</button>
+        </div>
+        <ol id="ad-list" class="ad-list"></ol>
+        <div id="empty" class="empty" hidden>
+          <p><strong>No ads yet.</strong></p>
+          <p class="muted">Add an image, a video, or a simple text slide for a local business.</p>
+        </div>
+      </section>
+
+      <details class="panel settings">
+        <summary><h2>Screen settings</h2></summary>
+        <form id="settings-form" class="settings-grid">
+          <label>
+            <span>Transition between ads</span>
+            <select name="transition">
+              <option value="fade">Fade</option>
+              <option value="slide">Slide</option>
+              <option value="none">Instant cut</option>
+            </select>
+          </label>
+          <label>
+            <span>Screen title when no ads are running</span>
+            <input name="idleTitle" maxlength="120" />
+          </label>
+          <label>
+            <span>Subtitle when no ads are running</span>
+            <input name="idleSubtitle" maxlength="200" />
+          </label>
+          <div class="settings-actions">
+            <button type="submit" class="btn primary">Save settings</button>
+            <span id="settings-saved" class="muted small"></span>
+          </div>
+        </form>
+      </details>
+    </main>
+  </div>
+
+  <!-- ---------- Ad editor ---------- -->
+  <dialog id="editor" class="editor">
+    <form id="ad-form" method="dialog">
+      <header class="editor-head">
+        <h2 id="editor-title">New ad</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </header>
+
+      <div class="editor-body">
+        <div class="editor-fields">
+          <label>
+            <span>Business / ad name</span>
+            <input name="title" maxlength="120" required placeholder="e.g. Cobourg Physio" />
+          </label>
+
+          <fieldset class="segmented" id="type-picker">
+            <legend>Ad type</legend>
+            <label><input type="radio" name="type" value="image" checked /> Image</label>
+            <label><input type="radio" name="type" value="video" /> Video</label>
+            <label><input type="radio" name="type" value="text" /> Text slide</label>
+          </fieldset>
+
+          <!-- Image / video -->
+          <div data-show="image video">
+            <label>
+              <span id="file-label">Image file</span>
+              <input type="file" name="file" id="file-input" accept="image/*" />
+            </label>
+            <p class="muted small">Best at 1920 × 1080 (landscape, 16:9).</p>
+          </div>
+
+          <!-- Text slide -->
+          <div data-show="text" class="stack">
+            <label>
+              <span>Headline</span>
+              <input name="headline" maxlength="200" placeholder="20% off your first massage" />
+            </label>
+            <label>
+              <span>Details</span>
+              <textarea name="body" rows="3" maxlength="600" placeholder="Sports massage, physio and rehab, right around the corner."></textarea>
+            </label>
+            <label>
+              <span>Bottom line (phone, website, promo code)</span>
+              <input name="footer" maxlength="200" placeholder="905-555-0123 · cobourgphysio.ca" />
+            </label>
+            <div class="color-row">
+              <label><span>Background</span><input type="color" name="textBackground" value="#123a6b" /></label>
+              <label><span>Text</span><input type="color" name="textColor" value="#ffffff" /></label>
+              <label><span>Accent</span><input type="color" name="accentColor" value="#5fa82a" /></label>
+            </div>
+          </div>
+
+          <h3>Timing</h3>
+          <div data-show="video">
+            <label class="check">
+              <input type="checkbox" name="playFullVideo" />
+              <span>Play the whole video (ignore the length below)</span>
+            </label>
+          </div>
+          <div id="duration-field">
+            <label for="duration-input"><span>Length on screen (seconds)</span></label>
+            <div class="duration-row">
+              <input type="number" id="duration-input" name="duration" min="3" max="600" step="1" value="15" required />
+              <div class="chips" id="duration-chips">
+                <button type="button" data-sec="10">10s</button>
+                <button type="button" data-sec="15">15s</button>
+                <button type="button" data-sec="30">30s</button>
+                <button type="button" data-sec="60">60s</button>
+              </div>
+            </div>
+          </div>
+          <label>
+            <span>Plays per loop</span>
+            <select name="playsPerLoop">
+              <option value="1">1× (standard)</option>
+              <option value="2">2× (premium)</option>
+              <option value="3">3×</option>
+              <option value="4">4×</option>
+              <option value="5">5×</option>
+            </select>
+          </label>
+
+          <h3>Schedule</h3>
+          <div class="date-row">
+            <label><span>Starts</span><input type="date" name="startDate" /></label>
+            <label><span>Ends</span><input type="date" name="endDate" /></label>
+          </div>
+          <p class="muted small">Leave blank to run indefinitely. The ad stops by itself after the end date.</p>
+
+          <div data-show="image video" class="stack">
+            <h3>Display</h3>
+            <label>
+              <span>Fit</span>
+              <select name="fit">
+                <option value="cover">Fill the screen (may crop edges)</option>
+                <option value="contain">Show the whole ad (bars on the sides)</option>
+              </select>
+            </label>
+            <label class="inline-color">
+              <span>Bar color</span>
+              <input type="color" name="mediaBackground" value="#000000" />
+            </label>
+            <label class="check" data-show="video">
+              <input type="checkbox" name="sound" />
+              <span>Play sound</span>
+            </label>
+          </div>
+
+          <h3>Other</h3>
+          <label class="check">
+            <input type="checkbox" name="enabled" checked />
+            <span>Active (uncheck to pause without deleting)</span>
+          </label>
+          <label>
+            <span>Private notes (contact, what they paid, etc.)</span>
+            <textarea name="notes" rows="2" maxlength="1000"></textarea>
+          </label>
+        </div>
+
+        <aside class="editor-preview">
+          <span class="muted small">Preview</span>
+          <div id="preview" class="preview fit-cover"></div>
+        </aside>
+      </div>
+
+      <footer class="editor-foot">
+        <p id="editor-error" class="error" role="alert"></p>
+        <div id="upload-progress" class="progress" hidden><div></div></div>
+        <button type="button" class="btn ghost" data-close>Cancel</button>
+        <button type="submit" class="btn primary" id="save-ad">Save ad</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="textad.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Northumberland Fitness — Ad Screen</title>
+  <link rel="stylesheet" href="display.css" />
+  <link rel="stylesheet" href="textad.css" />
+</head>
+<body>
+  <main id="stage" aria-live="off"></main>
+
+  <section id="idle" class="idle" hidden>
+    <div class="idle-inner">
+      <h1 id="idle-title"></h1>
+      <p id="idle-subtitle"></p>
+    </div>
+    <div id="idle-clock" class="idle-clock"></div>
+  </section>
+
+  <div id="hint" class="hint">Click anywhere for fullscreen (and to allow sound)</div>
+
+  <script src="textad.js"></script>
+  <script src="display.js"></script>
+</body>
+</html>

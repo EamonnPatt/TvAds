@@ -12,3 +12,6 @@ npm-debug.log*
 # OS/editor cruft
 .DS_Store
 Thumbs.db
+
+# Ads and uploaded media (managed through the admin panel, not the repo)
+server/data/
