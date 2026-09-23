@@ -348,9 +348,10 @@ function renderList() {
   );
 }
 
-// Why the TV couldn't play the music: YouTube's error codes, or 'stream'.
+// Why the TV couldn't play the music: YouTube's error codes, 'stream' or 'format'.
 const MUSIC_ERRORS = {
-  stream: 'the station isn’t answering, or this is the station’s web page instead of its stream. The TV keeps retrying',
+  stream: 'the station isn’t answering, doesn’t allow playing it from other sites, or this is its web page rather than the stream itself. The TV keeps retrying',
+  format: 'it isn’t an MP3 stream (it may be the station’s web page rather than the stream itself)',
   2: 'the link isn’t valid',
   5: 'the TV’s browser couldn’t play it',
   100: 'the video was removed or made private',

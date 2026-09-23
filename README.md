@@ -64,17 +64,20 @@ sound back.
 - It's on by default, playing the Heart 80s radio stream. Like the other
   settings, the switch and link are saved in `ads.json`, so on Render's free
   plan a restart puts them back to the defaults.
-- **Use a radio stream on a smart TV.** The link has to be the stream itself
-  (usually ending in `.mp3`, `.aac` or `/stream`), not the station's web page.
-  If a stream drops, the TV reconnects on its own within a minute. Other 80s
-  streams that were tested:
+- **Use a radio stream on a smart TV.** The TV decodes the stream itself and
+  plays it through the browser's Web Audio API, which runs alongside the video
+  ads. Samsung TVs can only play one video or audio element at a time, so an
+  ordinary audio player would take turns with the videos. The link has to be
+  an MP3 stream itself (usually ending in `.mp3` or `/stream`), not the
+  station's web page, and the station has to allow other sites to play it
+  (most do). If a stream drops, the TV reconnects on its own within a minute.
+  Other 80s streams that were tested:
   - `https://0n-80s.radionetz.de/0n-80s.mp3` (0N 80s)
   - `https://makri.cdnstream.com/1898_128` (Hits 80s)
   - `https://premium.shoutcastsolutions.com/radio/8050/256.mp3` (80s Forever)
-- **YouTube links only suit a PC or laptop running the TV screen.** Smart TV
-  browsers (Samsung especially) can only play one video at a time and draw
-  video on top of the page, so a YouTube player fights the video ads: the
-  music drops out and the YouTube video pops up on screen. On a PC, any video,
+- **YouTube links only suit a PC or laptop running the TV screen.** On a smart
+  TV the YouTube player fights the video ads: the music drops out and the
+  YouTube video pops up on screen. On a PC, any video,
   playlist or "Mix" link works. A single video loops; a playlist plays through
   and starts over.
 - Browsers don't allow sound until someone clicks the page, and the panel says
