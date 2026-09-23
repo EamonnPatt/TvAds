@@ -242,23 +242,154 @@ function showIdle() {
 }
 
 // ---------- Background music ----------
-// While music is on in the admin panel, a hidden YouTube player plays the link
-// behind the ads and every ad is muted.
+// While music is on in the admin panel, every ad is muted and the link plays
+// behind the ads: a radio stream through a plain <audio> element, or a YouTube
+// link through a hidden YouTube player. Smart TVs (Samsung especially) can only
+// play one video at a time, so there the YouTube player fights the video ads; a
+// stream is audio only and doesn't.
 const SILENT_WAV =
   'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
 const musicBox = document.getElementById('music');
-let musicKey = ''; // the video/playlist loaded now ('' = none)
-let musicPlayer = null;
-let musicReady = false;
-let musicError = null; // YouTube's error code, shown in the admin panel
+let musicKey = ''; // the link loaded now ('' = none)
+let musicAudio = null; // <audio> playing a radio stream
+let musicPlayer = null; // YouTube player
+let musicReady = false; // the YouTube player is ready for commands
+let musicError = null; // shown in the admin panel: YouTube's error code, or 'stream'
 let musicSkips = 0; // playlist videos skipped in a row because they wouldn't play
-let musicBlocked = false; // the browser refused sound even after a click
+let musicBlocked = false; // the browser refused YouTube sound even after a click
+let lastStreamTime = -1; // stream position at the last check, to spot a stalled stream
 let lastMusicReport = '';
 
 function musicOn() {
   return Boolean(playlist?.music);
 }
 
+// Runs on every playlist fetch, but only acts when music was turned on or off
+// or the link changed.
+function syncMusic() {
+  const music = playlist.music;
+  const key = music ? JSON.stringify(music) : '';
+  if (key === musicKey) return;
+  stopMusic();
+  musicKey = key;
+  if (music) {
+    const video = currentLayer?.querySelector('video');
+    if (video) video.muted = true; // the ad on screen goes quiet too
+    if (music.stream) startStream(music.stream);
+    else {
+      loadYouTubeApi().then(
+        () => key === musicKey && startYouTube(music),
+        (err) => {
+          console.warn(`No music: ${err.message}. Trying again at the next check.`);
+          if (key === musicKey) musicKey = '';
+        }
+      );
+    }
+  }
+  reportMusic();
+}
+
+function stopMusic() {
+  const audio = musicAudio;
+  musicAudio = null;
+  if (audio) {
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load(); // hangs up on the station
+  }
+  musicPlayer?.destroy();
+  musicPlayer = null;
+  musicReady = false;
+  musicError = null;
+  musicSkips = 0;
+  musicBlocked = false;
+  musicBox.replaceChildren();
+}
+
+// Called on every click on the page, which is what lets browsers play sound.
+function unmuteMusic() {
+  if (musicAudio) {
+    musicAudio.muted = false;
+    if (musicAudio.paused) playStream();
+  } else if (musicReady) {
+    unmuteYouTube();
+  }
+}
+
+// Safety net for a TV that runs all day: restart the music if it stopped.
+function keepMusicPlaying() {
+  if (musicAudio) {
+    if (musicAudio.muted) return; // waiting for a click
+    // A live stream stalls or drops when the connection blips. Reconnect if it
+    // hasn't moved since the last check.
+    const stuck = musicAudio.paused || musicAudio.currentTime === lastStreamTime;
+    lastStreamTime = musicAudio.currentTime;
+    if (stuck) {
+      musicAudio.load();
+      playStream();
+    }
+    return;
+  }
+  if (!musicReady || musicError != null) return;
+  const s = musicPlayer.getPlayerState();
+  if (s === YT.PlayerState.PAUSED || s === YT.PlayerState.ENDED || s === YT.PlayerState.CUED) musicPlayer.playVideo();
+}
+
+// What the admin panel shows about the music.
+function musicReport() {
+  if (!musicOn()) return { state: 'off' };
+  if (musicError != null) return { state: 'error', error: musicError };
+  if (musicAudio) {
+    if (musicAudio.muted) return { state: 'muted' };
+    return { state: !musicAudio.paused && musicAudio.readyState >= 3 ? 'playing' : 'loading' };
+  }
+  if (!musicReady) return { state: 'loading' };
+  const title = musicPlayer.getVideoData?.()?.title || null;
+  if (musicPlayer.isMuted()) return { state: musicBlocked ? 'blocked' : 'muted', title };
+  const s = musicPlayer.getPlayerState();
+  return { state: s === YT.PlayerState.PLAYING || s === YT.PlayerState.BUFFERING ? 'playing' : 'loading', title };
+}
+
+function reportMusic() {
+  if (JSON.stringify(musicReport()) !== lastMusicReport) heartbeat();
+}
+
+// ----- Radio stream -----
+function startStream(url) {
+  const audio = new Audio();
+  audio.preload = 'none'; // don't connect to the station until it can actually play
+  audio.addEventListener('playing', () => {
+    if (audio !== musicAudio) return;
+    musicError = null;
+    reportMusic();
+  });
+  audio.addEventListener('error', () => {
+    if (audio !== musicAudio) return;
+    musicError = 'stream'; // retried at the next check
+    reportMusic();
+  });
+  for (const type of ['pause', 'waiting', 'volumechange']) {
+    audio.addEventListener(type, () => audio === musicAudio && reportMusic());
+  }
+  audio.src = url;
+  musicAudio = audio;
+  playStream();
+}
+
+async function playStream() {
+  const audio = musicAudio;
+  lastStreamTime = -1;
+  try {
+    await audio.play();
+  } catch (err) {
+    // Browsers hold sound back until someone clicks the page, and unlike video,
+    // audio can't even play muted until then. Muted marks it as waiting for
+    // that click, which starts it (see unmuteMusic).
+    if (err.name === 'NotAllowedError' && audio === musicAudio) audio.muted = true;
+  }
+}
+
+// ----- YouTube -----
 let youTubeApi = null;
 function loadYouTubeApi() {
   if (window.YT?.Player) return Promise.resolve();
@@ -278,29 +409,7 @@ function loadYouTubeApi() {
   return youTubeApi;
 }
 
-// Runs on every playlist fetch, but only acts when music was turned on or off
-// or the link changed.
-function syncMusic() {
-  const music = playlist.music;
-  const key = music ? `${music.videoId || ''}|${music.list || ''}` : '';
-  if (key === musicKey) return;
-  stopMusic();
-  musicKey = key;
-  if (music) {
-    const video = currentLayer?.querySelector('video');
-    if (video) video.muted = true; // the ad on screen goes quiet too
-    loadYouTubeApi().then(
-      () => key === musicKey && startMusic(music),
-      (err) => {
-        console.warn(`No music: ${err.message}. Trying again at the next check.`);
-        if (key === musicKey) musicKey = '';
-      }
-    );
-  }
-  reportMusic();
-}
-
-function startMusic({ videoId, list }) {
+function startYouTube({ videoId, list }) {
   const holder = document.createElement('div'); // the player swaps this for its iframe
   musicBox.replaceChildren(holder);
   const player = new YT.Player(holder, {
@@ -353,16 +462,6 @@ function startMusic({ videoId, list }) {
   musicPlayer = player;
 }
 
-function stopMusic() {
-  musicPlayer?.destroy();
-  musicPlayer = null;
-  musicReady = false;
-  musicError = null;
-  musicSkips = 0;
-  musicBlocked = false;
-  musicBox.replaceChildren();
-}
-
 async function canPlaySound() {
   try {
     await new Audio(SILENT_WAV).play();
@@ -372,8 +471,7 @@ async function canPlaySound() {
   }
 }
 
-function unmuteMusic() {
-  if (!musicReady) return;
+function unmuteYouTube() {
   const player = musicPlayer;
   player.unMute();
   player.playVideo();
@@ -389,28 +487,6 @@ function unmuteMusic() {
     }
     reportMusic();
   }, 3000);
-}
-
-// Safety net for a TV that runs all day: restart the music if it stopped.
-function keepMusicPlaying() {
-  if (!musicReady || musicError != null) return;
-  const s = musicPlayer.getPlayerState();
-  if (s === YT.PlayerState.PAUSED || s === YT.PlayerState.ENDED || s === YT.PlayerState.CUED) musicPlayer.playVideo();
-}
-
-// What the admin panel shows about the music.
-function musicReport() {
-  if (!musicOn()) return { state: 'off' };
-  if (musicError != null) return { state: 'error', error: musicError };
-  if (!musicReady) return { state: 'loading' };
-  const title = musicPlayer.getVideoData?.()?.title || null;
-  if (musicPlayer.isMuted()) return { state: musicBlocked ? 'blocked' : 'muted', title };
-  const s = musicPlayer.getPlayerState();
-  return { state: s === YT.PlayerState.PLAYING || s === YT.PlayerState.BUFFERING ? 'playing' : 'loading', title };
-}
-
-function reportMusic() {
-  if (JSON.stringify(musicReport()) !== lastMusicReport) heartbeat();
 }
 
 function tickClock() {

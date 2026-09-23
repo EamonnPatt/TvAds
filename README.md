@@ -56,25 +56,34 @@ That's handy when telling a business how often their ad airs.
 
 ## Background music
 
-The **Background music** panel in the admin panel plays a YouTube video or
-playlist on the TV, behind the ads. While it's on, **every ad is muted**, even
-ads set to play sound. Turn it off and those ads get their sound back.
+The **Background music** panel in the admin panel plays an internet radio
+stream (or a YouTube link) on the TV, behind the ads. While it's on, **every ad
+is muted**, even ads set to play sound. Turn it off and those ads get their
+sound back.
 
-- Paste any YouTube link (a video, a playlist, or a "Mix" link like the default
-  one) and click **Save link**. A single video loops; a playlist plays through
+- It's on by default, playing the Heart 80s radio stream. Like the other
+  settings, the switch and link are saved in `ads.json`, so on Render's free
+  plan a restart puts them back to the defaults.
+- **Use a radio stream on a smart TV.** The link has to be the stream itself
+  (usually ending in `.mp3`, `.aac` or `/stream`), not the station's web page.
+  If a stream drops, the TV reconnects on its own within a minute. Other 80s
+  streams that were tested:
+  - `https://0n-80s.radionetz.de/0n-80s.mp3` (0N 80s)
+  - `https://makri.cdnstream.com/1898_128` (Hits 80s)
+  - `https://premium.shoutcastsolutions.com/radio/8050/256.mp3` (80s Forever)
+- **YouTube links only suit a PC or laptop running the TV screen.** Smart TV
+  browsers (Samsung especially) can only play one video at a time and draw
+  video on top of the page, so a YouTube player fights the video ads: the
+  music drops out and the YouTube video pops up on screen. On a PC, any video,
+  playlist or "Mix" link works. A single video loops; a playlist plays through
   and starts over.
-- It's on by default, playing an 80s hits mix. Like the other settings, the
-  switch and link are saved in `ads.json`, so on Render's free plan a restart
-  puts them back to the defaults.
-- Browsers don't allow sound until someone clicks the page. Until then the
-  music plays muted and the panel says so. **Click the TV screen once** and it
-  comes on. Chrome and Edge remember that click, even across the TV's
-  12-hourly refresh.
-- The panel shows what the TV is playing and warns you if YouTube won't play
-  the link (some videos can't be played outside youtube.com) or if the TV's
-  browser won't allow sound at all. On a PC or laptop used as the TV, starting
-  Chrome with `--autoplay-policy=no-user-gesture-required` means no click is
-  ever needed.
+- Browsers don't allow sound until someone clicks the page, and the panel says
+  so while it's waiting. **Click the TV screen once** and the music comes on.
+  Chrome and Edge remember that click, even across the TV's 12-hourly refresh.
+- The panel shows what the TV is playing and warns you if the link won't play
+  or if the TV's browser won't allow sound at all. On a PC or laptop used as
+  the TV, starting Chrome with `--autoplay-policy=no-user-gesture-required`
+  means no click is ever needed.
 
 ## 1. Install
 

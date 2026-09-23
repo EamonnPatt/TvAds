@@ -23,7 +23,7 @@ const DEFAULT_SETTINGS = {
   idleSubtitle: 'Advertise your business here: ask at the front desk',
   useLocalAds: true, // play the ads in the repo's ads/ folder
   musicEnabled: true, // play musicUrl behind the ads, with every ad muted
-  musicUrl: 'https://www.youtube.com/watch?v=OQPwWYlycK0&list=RDOQPwWYlycK0'
+  musicUrl: 'https://media-ssl.musicradio.com/Heart80sMP3' // Heart 80s radio stream
 };
 
 function load() {
@@ -58,9 +58,10 @@ const str = (v, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : 
 const date = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
 const color = (v, fallback) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : fallback);
 
-// Pulls the video and/or playlist id out of a YouTube link (watch, youtu.be,
-// embed, shorts, playlist). Returns null if it isn't one.
-function parseYouTube(link) {
+// Works out what the TV plays for a music link: the video and/or playlist id of
+// a YouTube link (watch, youtu.be, embed, shorts, playlist), or any other web
+// address as a radio stream. Returns null if it's neither.
+function parseMusicLink(link) {
   const text = str(link, 500);
   let url;
   try {
@@ -68,21 +69,22 @@ function parseYouTube(link) {
   } catch {
     return null;
   }
+  if (!url.hostname.includes('.')) return null;
   const host = url.hostname.replace(/^(www|m|music)\./, '');
   const videoIdOf = (v) => (/^[\w-]{11}$/.test(v || '') ? v : null);
   let videoId = null;
   if (host === 'youtu.be') videoId = videoIdOf(url.pathname.slice(1));
   else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
     videoId = videoIdOf(url.searchParams.get('v')) || videoIdOf(url.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/)?.[1]);
-  } else return null;
+  } else return { stream: url.href };
   const list = /^[\w-]{2,64}$/.test(url.searchParams.get('list') || '') ? url.searchParams.get('list') : null;
   return videoId || list ? { videoId, list } : null;
 }
 
 function musicLink(v) {
   const link = str(v, 500);
-  if (!parseYouTube(link)) {
-    throw Object.assign(new Error('That doesn’t look like a YouTube link. Copy it from the address bar or the Share button on YouTube.'), { status: 400 });
+  if (!parseMusicLink(link)) {
+    throw Object.assign(new Error('That doesn’t look like a radio stream or YouTube link.'), { status: 400 });
   }
   return link;
 }
@@ -173,7 +175,7 @@ module.exports = {
   UPLOAD_DIR,
   LOCAL_DIR,
   syncLocal,
-  parseYouTube,
+  parseMusicLink,
 
   snapshot() {
     return db;

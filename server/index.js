@@ -106,7 +106,7 @@ app.get('/api/playlist', (req, res) => {
   const publicAds = ads
     .filter((a) => a.enabled && (!a.local || settings.useLocalAds))
     .map(({ notes, ...ad }) => ad); // notes are admin-only
-  const music = settings.musicEnabled ? store.parseYouTube(settings.musicUrl) : null;
+  const music = settings.musicEnabled ? store.parseMusicLink(settings.musicUrl) : null;
   res.json({ ads: publicAds, settings, music, updatedAt });
 });
 
@@ -122,7 +122,7 @@ app.post('/api/heartbeat', (req, res) => {
       ? {
           state: music.state,
           title: typeof music.title === 'string' ? music.title.slice(0, 200) : null,
-          error: Number.isInteger(music.error) ? music.error : null
+          error: ['number', 'string'].includes(typeof music.error) ? String(music.error).slice(0, 20) : null
         }
       : null,
     seenAt: Date.now()

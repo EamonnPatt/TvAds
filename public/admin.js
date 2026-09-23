@@ -348,8 +348,9 @@ function renderList() {
   );
 }
 
-// YouTube's error codes, as the TV reports them.
+// Why the TV couldn't play the music: YouTube's error codes, or 'stream'.
 const MUSIC_ERRORS = {
+  stream: 'the station isn’t answering, or this is the station’s web page instead of its stream. The TV keeps retrying',
   2: 'the link isn’t valid',
   5: 'the TV’s browser couldn’t play it',
   100: 'the video was removed or made private',
@@ -369,10 +370,10 @@ function renderMusic() {
   if (!on) text = tvState !== 'off' ? 'Turning off. The TV picks this up within 30 seconds.' : '';
   else if (!tvIsOnline()) text = 'The TV is offline, so nothing is playing.';
   else if (tvState === 'off') text = 'Turning on. The TV picks this up within 30 seconds.';
-  else if (tvState === 'playing') text = `Playing on the TV: “${tv.title || 'music'}”`;
+  else if (tvState === 'playing') text = tv.title ? `Playing on the TV: “${tv.title}”` : 'Playing on the TV.';
   else if (tvState === 'muted') text = 'The TV’s browser is holding the sound back. Click anywhere on the TV screen once to start the music.';
   else if (tvState === 'blocked') text = 'The TV’s browser won’t let YouTube play sound, so the music is muted. Open the TV screen in Chrome or Edge instead.';
-  else if (tvState === 'error') text = `The TV can’t play this link: ${MUSIC_ERRORS[tv.error] || `YouTube error ${tv.error}`}. Try a different one.`;
+  else if (tvState === 'error') text = `The TV can’t play this link: ${MUSIC_ERRORS[tv.error] || `YouTube error ${tv.error}`}.`;
   else text = 'Starting the music on the TV…';
 
   const box = $('#music-status');
