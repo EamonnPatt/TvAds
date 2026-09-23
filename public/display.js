@@ -40,10 +40,12 @@ async function fetchPlaylist() {
 }
 
 function heartbeat() {
+  const music = musicReport();
+  lastMusicReport = JSON.stringify(music);
   fetch('/api/heartbeat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ adId: currentAd?.id || null, title: currentAd?.title || null })
+    body: JSON.stringify({ adId: currentAd?.id || null, title: currentAd?.title || null, music })
   }).catch(() => {});
 }
 
@@ -53,6 +55,7 @@ function applySettings() {
   document.body.classList.add(`t-${s.transition || 'fade'}`);
   document.getElementById('idle-title').textContent = s.idleTitle || '';
   document.getElementById('idle-subtitle').textContent = s.idleSubtitle || '';
+  syncMusic();
 }
 
 // ---------- Playlist ----------
@@ -191,7 +194,7 @@ function reveal(ad, layer, media, gen) {
 
   if (ad.type === 'video') {
     media.currentTime = 0;
-    playVideo(media, !ad.muted);
+    playVideo(media, !ad.muted && !musicOn());
     if (ad.playFullVideo) {
       media.addEventListener('ended', () => gen === generation && advance(), { once: true });
       const lengthMs = Number.isFinite(media.duration) ? media.duration * 1000 + 3000 : MAX_VIDEO_MS;
@@ -238,6 +241,178 @@ function showIdle() {
   advanceTimer = setTimeout(advance, 60_000);
 }
 
+// ---------- Background music ----------
+// While music is on in the admin panel, a hidden YouTube player plays the link
+// behind the ads and every ad is muted.
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+const musicBox = document.getElementById('music');
+let musicKey = ''; // the video/playlist loaded now ('' = none)
+let musicPlayer = null;
+let musicReady = false;
+let musicError = null; // YouTube's error code, shown in the admin panel
+let musicSkips = 0; // playlist videos skipped in a row because they wouldn't play
+let musicBlocked = false; // the browser refused sound even after a click
+let lastMusicReport = '';
+
+function musicOn() {
+  return Boolean(playlist?.music);
+}
+
+let youTubeApi = null;
+function loadYouTubeApi() {
+  if (window.YT?.Player) return Promise.resolve();
+  if (!youTubeApi) {
+    youTubeApi = new Promise((resolve, reject) => {
+      window.onYouTubeIframeAPIReady = resolve;
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      script.onerror = () => {
+        youTubeApi = null;
+        script.remove();
+        reject(new Error('the YouTube player failed to load'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return youTubeApi;
+}
+
+// Runs on every playlist fetch, but only acts when music was turned on or off
+// or the link changed.
+function syncMusic() {
+  const music = playlist.music;
+  const key = music ? `${music.videoId || ''}|${music.list || ''}` : '';
+  if (key === musicKey) return;
+  stopMusic();
+  musicKey = key;
+  if (music) {
+    const video = currentLayer?.querySelector('video');
+    if (video) video.muted = true; // the ad on screen goes quiet too
+    loadYouTubeApi().then(
+      () => key === musicKey && startMusic(music),
+      (err) => {
+        console.warn(`No music: ${err.message}. Trying again at the next check.`);
+        if (key === musicKey) musicKey = '';
+      }
+    );
+  }
+  reportMusic();
+}
+
+function startMusic({ videoId, list }) {
+  const holder = document.createElement('div'); // the player swaps this for its iframe
+  musicBox.replaceChildren(holder);
+  const player = new YT.Player(holder, {
+    width: 200,
+    height: 200,
+    ...(videoId ? { videoId } : {}),
+    playerVars: {
+      controls: 0,
+      disablekb: 1,
+      playsinline: 1,
+      loop: 1,
+      origin: location.origin,
+      // A single video only loops when it's also given as its own playlist.
+      ...(list ? { listType: 'playlist', list } : { playlist: videoId })
+    },
+    events: {
+      onReady: async () => {
+        if (player !== musicPlayer) return;
+        // Browsers hold sound back until someone clicks the page. Until then the
+        // music plays muted, so that click only has to unmute it.
+        const withSound = await canPlaySound();
+        if (player !== musicPlayer) return;
+        musicReady = true;
+        player.setLoop(true);
+        if (withSound) player.unMute();
+        else player.mute();
+        player.playVideo();
+        reportMusic();
+      },
+      onStateChange: (e) => {
+        if (player !== musicPlayer) return;
+        if (e.data === YT.PlayerState.PLAYING) {
+          musicSkips = 0;
+          musicError = null;
+        }
+        reportMusic();
+      },
+      onError: (e) => {
+        if (player !== musicPlayer) return;
+        // Skip a playlist video that won't play, but don't keep skipping forever.
+        if (list && ++musicSkips < 5) {
+          player.nextVideo();
+          return;
+        }
+        musicError = e.data;
+        reportMusic();
+      }
+    }
+  });
+  musicPlayer = player;
+}
+
+function stopMusic() {
+  musicPlayer?.destroy();
+  musicPlayer = null;
+  musicReady = false;
+  musicError = null;
+  musicSkips = 0;
+  musicBlocked = false;
+  musicBox.replaceChildren();
+}
+
+async function canPlaySound() {
+  try {
+    await new Audio(SILENT_WAV).play();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function unmuteMusic() {
+  if (!musicReady) return;
+  const player = musicPlayer;
+  player.unMute();
+  player.playVideo();
+  // Some browsers still won't let the YouTube player make sound after a click
+  // on the page. Keep the music going muted and say so in the admin panel.
+  setTimeout(() => {
+    if (player !== musicPlayer) return;
+    const s = player.getPlayerState();
+    musicBlocked = s !== YT.PlayerState.PLAYING && s !== YT.PlayerState.BUFFERING;
+    if (musicBlocked) {
+      player.mute();
+      player.playVideo();
+    }
+    reportMusic();
+  }, 3000);
+}
+
+// Safety net for a TV that runs all day: restart the music if it stopped.
+function keepMusicPlaying() {
+  if (!musicReady || musicError != null) return;
+  const s = musicPlayer.getPlayerState();
+  if (s === YT.PlayerState.PAUSED || s === YT.PlayerState.ENDED || s === YT.PlayerState.CUED) musicPlayer.playVideo();
+}
+
+// What the admin panel shows about the music.
+function musicReport() {
+  if (!musicOn()) return { state: 'off' };
+  if (musicError != null) return { state: 'error', error: musicError };
+  if (!musicReady) return { state: 'loading' };
+  const title = musicPlayer.getVideoData?.()?.title || null;
+  if (musicPlayer.isMuted()) return { state: musicBlocked ? 'blocked' : 'muted', title };
+  const s = musicPlayer.getPlayerState();
+  return { state: s === YT.PlayerState.PLAYING || s === YT.PlayerState.BUFFERING ? 'playing' : 'loading', title };
+}
+
+function reportMusic() {
+  if (JSON.stringify(musicReport()) !== lastMusicReport) heartbeat();
+}
+
 function tickClock() {
   document.getElementById('idle-clock').textContent = new Date().toLocaleTimeString([], {
     hour: 'numeric',
@@ -263,9 +438,10 @@ document.addEventListener('click', () => {
     document.documentElement.requestFullscreen?.().catch(() => {});
   }
   hint.classList.remove('show');
-  // The click also unlocks sound for the video that's playing now.
+  // The click also unlocks sound for the music, or for the video playing now.
   const video = currentLayer?.querySelector('video');
-  if (video && currentAd && !currentAd.muted) video.muted = false;
+  if (video && currentAd && !currentAd.muted && !musicOn()) video.muted = false;
+  unmuteMusic();
 });
 
 let wakeLock = null;
@@ -291,5 +467,6 @@ fetchPlaylist().then(() => {
 });
 setInterval(() => {
   fetchPlaylist();
+  keepMusicPlaying();
   heartbeat();
 }, POLL_MS);

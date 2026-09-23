@@ -86,6 +86,21 @@ body.t-none .layer {
   object-fit: contain;
 }
 
+/* ---------- Background music player ---------- */
+/* Kept inside the viewport (browsers pause muted video that's off-screen) but
+   invisible behind the ads, and never in the way of the fullscreen click. */
+.music {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  z-index: -1;
+  width: 200px;
+  height: 200px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ---------- Idle screen (no active ads) ---------- */
 .idle {
   position: fixed;

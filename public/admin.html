@@ -43,6 +43,27 @@
       <section class="panel">
         <div class="panel-head">
           <div>
+            <h2>Background music</h2>
+            <p class="muted small">Plays on the TV behind the ads. Every ad is muted while music is on.</p>
+          </div>
+          <label class="switch" title="Turn the music on or off">
+            <input type="checkbox" id="music-on" aria-label="Play background music" />
+            <span class="track"></span>
+          </label>
+        </div>
+        <form id="music-form" class="music-form">
+          <label>
+            <span>YouTube link (a video or a playlist)</span>
+            <input name="musicUrl" inputmode="url" autocomplete="off" spellcheck="false" maxlength="500" required placeholder="https://www.youtube.com/watch?v=…" />
+          </label>
+          <button type="submit" class="btn primary">Save link</button>
+        </form>
+        <p id="music-status" class="music-status small" hidden></p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
             <h2>Ads in rotation</h2>
             <p class="muted small">Plays in this order, then loops (2× ads are spread evenly through it). Drag to reorder.</p>
           </div>

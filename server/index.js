@@ -106,15 +106,25 @@ app.get('/api/playlist', (req, res) => {
   const publicAds = ads
     .filter((a) => a.enabled && (!a.local || settings.useLocalAds))
     .map(({ notes, ...ad }) => ad); // notes are admin-only
-  res.json({ ads: publicAds, settings, updatedAt });
+  const music = settings.musicEnabled ? store.parseYouTube(settings.musicUrl) : null;
+  res.json({ ads: publicAds, settings, music, updatedAt });
 });
 
 let displayStatus = null; // what the TV last reported it was showing
+const MUSIC_STATES = ['off', 'loading', 'playing', 'muted', 'blocked', 'error'];
 
 app.post('/api/heartbeat', (req, res) => {
+  const music = req.body?.music;
   displayStatus = {
     adId: typeof req.body?.adId === 'string' ? req.body.adId : null,
     title: typeof req.body?.title === 'string' ? req.body.title.slice(0, 120) : null,
+    music: MUSIC_STATES.includes(music?.state)
+      ? {
+          state: music.state,
+          title: typeof music.title === 'string' ? music.title.slice(0, 200) : null,
+          error: Number.isInteger(music.error) ? music.error : null
+        }
+      : null,
     seenAt: Date.now()
   };
   res.json({ ok: true });

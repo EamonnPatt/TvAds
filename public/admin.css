@@ -480,6 +480,33 @@ input[type='color'] {
   margin: 4px 0;
 }
 
+/* ---------- Music ---------- */
+.music-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.music-form label {
+  flex: 1;
+  min-width: 0;
+}
+.music-status {
+  margin: 12px 0 0;
+  color: var(--muted);
+}
+.music-status[data-state='playing'] {
+  color: #2f6d12;
+}
+.music-status[data-state='muted'],
+.music-status[data-state='blocked'] {
+  color: var(--warn);
+  font-weight: 600;
+}
+.music-status[data-state='error'] {
+  color: var(--error);
+  font-weight: 600;
+}
+
 /* ---------- Settings ---------- */
 .settings summary {
   cursor: pointer;

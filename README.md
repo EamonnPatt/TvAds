@@ -54,6 +54,28 @@ Each ad has:
 The dashboard shows the total loop length and how many loops run per hour.
 That's handy when telling a business how often their ad airs.
 
+## Background music
+
+The **Background music** panel in the admin panel plays a YouTube video or
+playlist on the TV, behind the ads. While it's on, **every ad is muted**, even
+ads set to play sound. Turn it off and those ads get their sound back.
+
+- Paste any YouTube link (a video, a playlist, or a "Mix" link like the default
+  one) and click **Save link**. A single video loops; a playlist plays through
+  and starts over.
+- It's on by default, playing an 80s hits mix. Like the other settings, the
+  switch and link are saved in `ads.json`, so on Render's free plan a restart
+  puts them back to the defaults.
+- Browsers don't allow sound until someone clicks the page. Until then the
+  music plays muted and the panel says so. **Click the TV screen once** and it
+  comes on. Chrome and Edge remember that click, even across the TV's
+  12-hourly refresh.
+- The panel shows what the TV is playing and warns you if YouTube won't play
+  the link (some videos can't be played outside youtube.com) or if the TV's
+  browser won't allow sound at all. On a PC or laptop used as the TV, starting
+  Chrome with `--autoplay-policy=no-user-gesture-required` means no click is
+  ever needed.
+
 ## 1. Install
 
 ```
@@ -132,7 +154,7 @@ cPanel's **Zone Editor**.
 ```
 public/            Frontend (vanilla HTML/CSS/JS)
   index.html         TV screen
-  display.js/.css    Ad player: rotation, transitions, fullscreen, heartbeat
+  display.js/.css    Ad player: rotation, transitions, background music, fullscreen, heartbeat
   admin.html         Admin panel
   admin.js/.css      Admin panel logic and styles
   textslide.js/.css     Text-slide renderer shared by the TV and admin preview

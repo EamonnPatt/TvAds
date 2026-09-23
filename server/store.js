@@ -21,7 +21,9 @@ const DEFAULT_SETTINGS = {
   transition: 'fade', // 'fade' | 'slide' | 'none'
   idleTitle: 'Northumberland Fitness',
   idleSubtitle: 'Advertise your business here: ask at the front desk',
-  useLocalAds: true // play the ads in the repo's ads/ folder
+  useLocalAds: true, // play the ads in the repo's ads/ folder
+  musicEnabled: true, // play musicUrl behind the ads, with every ad muted
+  musicUrl: 'https://www.youtube.com/watch?v=OQPwWYlycK0&list=RDOQPwWYlycK0'
 };
 
 function load() {
@@ -55,6 +57,35 @@ const clampInt = (v, min, max, fallback) => {
 const str = (v, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const date = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
 const color = (v, fallback) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : fallback);
+
+// Pulls the video and/or playlist id out of a YouTube link (watch, youtu.be,
+// embed, shorts, playlist). Returns null if it isn't one.
+function parseYouTube(link) {
+  const text = str(link, 500);
+  let url;
+  try {
+    url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.replace(/^(www|m|music)\./, '');
+  const videoIdOf = (v) => (/^[\w-]{11}$/.test(v || '') ? v : null);
+  let videoId = null;
+  if (host === 'youtu.be') videoId = videoIdOf(url.pathname.slice(1));
+  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+    videoId = videoIdOf(url.searchParams.get('v')) || videoIdOf(url.pathname.match(/^\/(?:embed|shorts|live)\/([^/]+)/)?.[1]);
+  } else return null;
+  const list = /^[\w-]{2,64}$/.test(url.searchParams.get('list') || '') ? url.searchParams.get('list') : null;
+  return videoId || list ? { videoId, list } : null;
+}
+
+function musicLink(v) {
+  const link = str(v, 500);
+  if (!parseYouTube(link)) {
+    throw Object.assign(new Error('That doesn’t look like a YouTube link. Copy it from the address bar or the Share button on YouTube.'), { status: 400 });
+  }
+  return link;
+}
 
 // Whitelists and normalizes the editable fields so the stored data is always well-formed.
 function sanitize(input, existing = {}) {
@@ -142,6 +173,7 @@ module.exports = {
   UPLOAD_DIR,
   LOCAL_DIR,
   syncLocal,
+  parseYouTube,
 
   snapshot() {
     return db;
@@ -191,7 +223,9 @@ module.exports = {
       transition: ['fade', 'slide', 'none'].includes(input.transition) ? input.transition : db.settings.transition,
       idleTitle: input.idleTitle !== undefined ? str(input.idleTitle, 120) : db.settings.idleTitle,
       idleSubtitle: input.idleSubtitle !== undefined ? str(input.idleSubtitle, 200) : db.settings.idleSubtitle,
-      useLocalAds: input.useLocalAds !== undefined ? Boolean(input.useLocalAds) : db.settings.useLocalAds
+      useLocalAds: input.useLocalAds !== undefined ? Boolean(input.useLocalAds) : db.settings.useLocalAds,
+      musicEnabled: input.musicEnabled !== undefined ? Boolean(input.musicEnabled) : db.settings.musicEnabled,
+      musicUrl: input.musicUrl !== undefined ? musicLink(input.musicUrl) : db.settings.musicUrl
     };
     save();
     return db.settings;

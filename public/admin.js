@@ -243,6 +243,7 @@ function render() {
     listKey = key;
     renderList();
   }
+  renderMusic();
   renderSettings();
 }
 
@@ -345,6 +346,39 @@ function renderList() {
       );
     })
   );
+}
+
+// YouTube's error codes, as the TV reports them.
+const MUSIC_ERRORS = {
+  2: 'the link isn’t valid',
+  5: 'the TV’s browser couldn’t play it',
+  100: 'the video was removed or made private',
+  101: 'YouTube won’t let it play on other sites',
+  150: 'YouTube won’t let it play on other sites'
+};
+
+function renderMusic() {
+  const on = state.settings.musicEnabled === true;
+  $('#music-on').checked = on;
+  const form = $('#music-form');
+  if (!form.contains(document.activeElement)) form.musicUrl.value = state.settings.musicUrl || '';
+
+  const tv = tvIsOnline() ? state.display.music : null;
+  const tvState = tv?.state || 'off';
+  let text = '';
+  if (!on) text = tvState !== 'off' ? 'Turning off. The TV picks this up within 30 seconds.' : '';
+  else if (!tvIsOnline()) text = 'The TV is offline, so nothing is playing.';
+  else if (tvState === 'off') text = 'Turning on. The TV picks this up within 30 seconds.';
+  else if (tvState === 'playing') text = `Playing on the TV: “${tv.title || 'music'}”`;
+  else if (tvState === 'muted') text = 'The TV’s browser is holding the sound back. Click anywhere on the TV screen once to start the music.';
+  else if (tvState === 'blocked') text = 'The TV’s browser won’t let YouTube play sound, so the music is muted. Open the TV screen in Chrome or Edge instead.';
+  else if (tvState === 'error') text = `The TV can’t play this link: ${MUSIC_ERRORS[tv.error] || `YouTube error ${tv.error}`}. Try a different one.`;
+  else text = 'Starting the music on the TV…';
+
+  const box = $('#music-status');
+  box.textContent = text;
+  box.dataset.state = on ? tvState : '';
+  box.hidden = !text;
 }
 
 function renderSettings() {
@@ -665,6 +699,28 @@ $('#use-local').addEventListener('change', async (e) => {
   } catch (err) {
     toast(err.message);
     e.target.checked = !e.target.checked;
+  }
+});
+
+$('#music-on').addEventListener('change', async (e) => {
+  try {
+    state.settings = await api('/api/admin/settings', { method: 'PUT', body: { musicEnabled: e.target.checked } });
+    toast(e.target.checked ? 'Music is on and ads are muted. The TV picks this up within 30 seconds.' : 'Music is off. The TV picks this up within 30 seconds.');
+    render();
+  } catch (err) {
+    toast(err.message);
+    e.target.checked = !e.target.checked;
+  }
+});
+
+$('#music-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    state.settings = await api('/api/admin/settings', { method: 'PUT', body: { musicUrl: e.target.musicUrl.value } });
+    toast('Music link saved. The TV picks it up within 30 seconds.');
+    render();
+  } catch (err) {
+    toast(err.message);
   }
 });
 
