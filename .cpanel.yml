@@ -1,0 +1,12 @@
+---
+# cPanel → Git Version Control → Manage → Pull or Deploy: "Update from Remote", then "Deploy HEAD Commit"
+# runs these and copies the site into place. SITE must be the subdomain's document root (cPanel → Domains).
+# config.php isn't in the repo and isn't copied, so the live one is never overwritten.
+deployment:
+  tasks:
+    - export SITE=/home/rcfwp52q6knr/public_html/tvs.northumberlandfitness.com/
+    - export PRIVATE=/home/rcfwp52q6knr/adscreen-private/
+    - /bin/mkdir -p $SITE $PRIVATE
+    - /bin/cp -R public_html/. $SITE
+    # Listed one by one so a stray config.php in the repo folder can never replace the live one.
+    - /bin/cp adscreen-private/.htaccess adscreen-private/app.php adscreen-private/store.php adscreen-private/config.sample.php $PRIVATE

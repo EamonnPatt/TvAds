@@ -130,7 +130,22 @@ Don't call the folder or subdomain **ads**. TV browsers with ad blocking
 
 ### 4. Upload
 
-In cPanel → **File Manager** (or over FTP):
+**With Git (how the live site is set up).** The repo is cloned in cPanel →
+**Git Version Control** (`~/repositories/TvAds`), and
+[`.cpanel.yml`](.cpanel.yml) copies the files into place:
+
+1. Push your changes to GitHub.
+2. In cPanel → **Git Version Control**, click **Manage** next to the repo, open
+   **Pull or Deploy**, and click **Update from Remote**, then
+   **Deploy HEAD Commit**.
+
+`SITE` in `.cpanel.yml` has to be the subdomain's **Document Root** as cPanel →
+**Domains** shows it. Change it there if the site moves. Deploying copies files
+but never deletes any, so remove a file from the server by hand if you delete
+it from the repo. `config.php` is never copied: put it in `~/adscreen-private`
+yourself, once.
+
+**By hand.** In cPanel → **File Manager** (or over FTP):
 
 1. Upload the `adscreen-private` folder into your home folder (the one that
    holds `public_html`), with the `config.php` from step 2 in it.
@@ -200,4 +215,5 @@ adscreen-private/    Goes next to public_html, outside it
   store.php            The database: tables, ads, settings, and files stored in 1 MB pieces
   config.sample.php    Copy to config.php and fill in (config.php is git-ignored)
   .htaccess            Blocks web access in case the folder ends up inside public_html
+.cpanel.yml          cPanel Git deployment: copies both folders into place
 ```
