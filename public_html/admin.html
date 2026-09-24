@@ -32,7 +32,7 @@
       </div>
       <div id="tv-status" class="tv-status" title="What the TV last reported"></div>
       <div class="topbar-actions">
-        <a class="btn ghost" href="/" target="_blank" rel="noopener">Open TV screen ↗</a>
+        <a class="btn ghost" href="./" target="_blank" rel="noopener">Open TV screen ↗</a>
         <button type="button" id="logout" class="btn ghost">Log out</button>
       </div>
     </header>
@@ -69,10 +69,6 @@
             <p class="muted small">Plays in this order, then loops (2× ads are spread evenly through it). Drag to reorder.</p>
           </div>
           <div class="panel-head-actions">
-            <label class="check" title="Ads from the ads/ folder in the repo">
-              <input type="checkbox" id="use-local" />
-              <span>Play folder ads</span>
-            </label>
             <button type="button" id="new-spot" class="btn primary">+ New ad</button>
           </div>
         </div>
@@ -126,8 +122,6 @@
             <input name="title" maxlength="120" required placeholder="e.g. Cobourg Physio" />
           </label>
 
-          <p id="local-note" class="muted small" hidden>This ad comes from the <strong>ads/</strong> folder in the repo. To swap its file, replace it there. Everything else can be changed here.</p>
-
           <fieldset class="segmented" id="type-picker">
             <legend>Ad type</legend>
             <label><input type="radio" name="type" value="image" checked /> Image</label>
@@ -141,7 +135,7 @@
               <span id="file-label">Image file</span>
               <input type="file" name="file" id="file-input" accept="image/*" />
             </label>
-            <p class="muted small">Best at 1920 × 1080 (landscape, 16:9).</p>
+            <p class="muted small" id="file-help">Best at 1920 × 1080 (landscape, 16:9).</p>
           </div>
 
           <!-- Text slide -->

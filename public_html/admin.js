@@ -33,47 +33,64 @@ function setToken(token) {
 }
 let memoryToken = getToken();
 
-async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(path, {
-    method,
-    headers: {
-      Authorization: `Bearer ${memoryToken || ''}`,
-      ...(body ? { 'Content-Type': 'application/json' } : {})
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
+// Calls api.php. A JSON body (or a FormData form) makes it a POST.
+async function api(action, { body, form } = {}) {
+  let res;
+  try {
+    res = await fetch(`api.php?action=${action}`, {
+      method: body || form ? 'POST' : 'GET',
+      headers: {
+        'X-Admin-Token': memoryToken || '',
+        ...(body ? { 'Content-Type': 'application/json' } : {})
+      },
+      body: form || (body ? JSON.stringify(body) : undefined)
+    });
+  } catch {
+    throw new Error('Network error. Check the connection and try again.');
+  }
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) {
+  if (res.status === 401 && action !== 'login') {
     showLogin();
     throw new Error(data.error || 'Not logged in.');
   }
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   return data;
 }
 
-// Ads go up as multipart (for the file) via XHR so we can show upload progress.
-function sendAd(method, path, fields, file, onProgress) {
-  return new Promise((resolve, reject) => {
-    const form = new FormData();
-    form.append('data', JSON.stringify(fields));
-    if (file) form.append('file', file);
+const MEDIA_TYPES = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  mp4: 'video/mp4', m4v: 'video/x-m4v', mov: 'video/quicktime', webm: 'video/webm'
+};
 
-    const xhr = new XMLHttpRequest();
-    xhr.open(method, path);
-    xhr.setRequestHeader('Authorization', `Bearer ${memoryToken || ''}`);
-    if (onProgress) xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
-    xhr.onload = () => {
-      let data = {};
+// Uploads a file into the database in pieces (the server says how big), so no PHP or MySQL size limit gets in
+// the way. A piece that fails is retried, so a Wi-Fi hiccup doesn't lose the whole upload. Returns the file's id.
+async function uploadFile(file, onProgress) {
+  const type = file.type || MEDIA_TYPES[file.name.split('.').pop().toLowerCase()] || '';
+  const { id, chunkSize } = await api('upload-start', { body: { size: file.size, type } });
+  const count = Math.ceil(file.size / chunkSize);
+  for (let seq = 0; seq < count; seq++) {
+    for (let attempt = 1; ; attempt++) {
+      const form = new FormData();
+      form.append('id', id);
+      form.append('seq', String(seq));
+      form.append('chunk', file.slice(seq * chunkSize, (seq + 1) * chunkSize), 'chunk');
       try {
-        data = JSON.parse(xhr.responseText);
-      } catch {}
-      if (xhr.status === 401) showLogin();
-      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new Error(data.error || `Save failed (${xhr.status})`));
-    };
-    xhr.onerror = () => reject(new Error('Network error. Check the connection and try again.'));
-    xhr.send(form);
-  });
+        await api('upload-chunk', { form });
+        break;
+      } catch (err) {
+        if (attempt === 4 || (err.status >= 400 && err.status < 500)) throw err;
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+      }
+    }
+    onProgress((seq + 1) / count);
+  }
+  return id;
+}
+
+// Creates an ad (no id) or saves the given fields over an existing one, uploading its new file first if there is one.
+async function saveSpot(id, fields, file, onProgress) {
+  const mediaId = file ? await uploadFile(file, onProgress) : null;
+  return api('save-spot', { body: { id, fields, mediaId } });
 }
 
 // ---------- Login ----------
@@ -91,13 +108,7 @@ $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('#login-error').textContent = '';
   try {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: $('#login-password').value })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Login failed.');
+    const data = await api('login', { body: { password: $('#login-password').value } });
     setToken(data.token);
     $('#login-password').value = '';
     start();
@@ -126,24 +137,8 @@ async function start() {
 }
 
 async function refresh() {
-  state = await api('/api/admin/state');
+  state = await api('state');
   render();
-  measureFolderVideos();
-}
-
-// Folder videos arrive without a known length; measure them here so the loop length is right.
-const measured = new Set();
-function measureFolderVideos() {
-  for (const ad of state.ads) {
-    if (!ad.local || ad.type !== 'video' || ad.videoLength || measured.has(ad.src)) continue;
-    measured.add(ad.src);
-    const probe = document.createElement('video');
-    probe.preload = 'metadata';
-    probe.onloadedmetadata = () => {
-      if (Number.isFinite(probe.duration)) quickUpdate(ad, { videoLength: Math.round(probe.duration) });
-    };
-    probe.src = ad.src;
-  }
 }
 
 // ---------- Helpers ----------
@@ -155,7 +150,6 @@ function localToday() {
 function statusOf(ad) {
   const today = localToday();
   if (!ad.enabled) return { key: 'paused', label: 'Paused' };
-  if (ad.local && !state.settings.useLocalAds) return { key: 'paused', label: 'Folder ads off' };
   if (ad.startDate && ad.startDate > today) return { key: 'scheduled', label: `Starts ${fmtDate(ad.startDate)}` };
   if (ad.endDate && ad.endDate < today) return { key: 'expired', label: 'Ended' };
   return { key: 'live', label: 'Live' };
@@ -172,6 +166,12 @@ function fmtDuration(totalSec) {
   const m = Math.floor(s / 60);
   const rest = s % 60;
   return rest ? `${m}m ${rest}s` : `${m}m`;
+}
+
+function fmtSize(bytes) {
+  const mb = bytes / 1048576;
+  if (mb >= 1000) return `${(mb / 1024).toFixed(1)} GB`;
+  return `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`;
 }
 
 function fmtAgo(ms) {
@@ -238,7 +238,7 @@ function render() {
   renderTvStatus();
   renderSummary();
   // Rebuilding the list reloads every thumbnail, so only do it when something shown there changed.
-  const key = JSON.stringify([state.ads, state.settings.useLocalAds, tvIsOnline() ? state.display.adId : null, localToday()]);
+  const key = JSON.stringify([state.ads, tvIsOnline() ? state.display.adId : null, localToday()]);
   if (key !== listKey) {
     listKey = key;
     renderList();
@@ -251,7 +251,7 @@ function renderTvStatus() {
   const box = $('#tv-status');
   const d = state.display;
   let cls = '';
-  let text = 'TV hasn’t connected since the server started';
+  let text = 'TV hasn’t connected yet';
   if (d && tvIsOnline()) {
     cls = 'online';
     text = d.title ? `TV on · showing “${d.title}”` : 'TV on · no ads running';
@@ -278,7 +278,8 @@ function renderSummary() {
     stat(String(live.length), live.length === 1 ? 'ad playing now' : 'ads playing now'),
     stat(live.length ? `${fmtDuration(loop)}${unknown ? '+' : ''}` : '—', 'full loop length'),
     stat(live.length && !unknown ? `${Math.floor((60 * 60) / Math.max(loop, 1))}×` : '—', 'loops per hour'),
-    stat(String(upcoming.length), 'scheduled to start later')
+    stat(String(upcoming.length), 'scheduled to start later'),
+    stat(fmtSize(state.storage?.used || 0), 'of images and videos in the database')
   );
 }
 
@@ -298,7 +299,8 @@ function renderList() {
         ad.startDate || ad.endDate
           ? `${ad.startDate ? fmtDate(ad.startDate) : 'Now'} → ${ad.endDate ? fmtDate(ad.endDate) : 'no end'}`
           : null,
-        ad.type === 'video' && !ad.muted ? 'Sound on' : null
+        ad.type === 'video' && !ad.muted ? 'Sound on' : null,
+        ad.fileSize ? fmtSize(ad.fileSize) : null
       ].filter(Boolean);
 
       const toggle = el(
@@ -326,7 +328,6 @@ function renderList() {
             { class: 'spot-title' },
             ad.title,
             el('span', { class: `badge ${status.key}` }, status.label),
-            ad.local ? el('span', { class: 'badge folder', title: `ads/${ad.file}` }, 'Folder') : null,
             ad.id === onScreenId ? el('span', { class: 'badge onscreen' }, 'On screen now') : null
           ),
           el('div', { class: 'spot-meta' }, meta.map((m) => el('span', {}, m))),
@@ -339,9 +340,7 @@ function renderList() {
           el('button', { type: 'button', class: 'icon-btn', title: 'Move down', 'aria-label': 'Move down', disabled: i === state.ads.length - 1, onclick: () => move(ad.id, 1) }, '↓'),
           toggle,
           el('button', { type: 'button', class: 'icon-btn', onclick: () => openEditor(ad) }, 'Edit'),
-          ad.local
-            ? null
-            : el('button', { type: 'button', class: 'icon-btn danger', title: 'Delete', 'aria-label': `Delete ${ad.title}`, onclick: () => deleteAd(ad) }, trashIcon())
+          el('button', { type: 'button', class: 'icon-btn danger', title: 'Delete', 'aria-label': `Delete ${ad.title}`, onclick: () => deleteAd(ad) }, trashIcon())
         )
       );
     })
@@ -384,7 +383,6 @@ function renderMusic() {
 }
 
 function renderSettings() {
-  $('#use-local').checked = state.settings.useLocalAds !== false;
   const form = $('#settings-form');
   // Don't clobber what the user is typing during a background refresh.
   if (form.contains(document.activeElement)) return;
@@ -396,7 +394,7 @@ function renderSettings() {
 // ---------- List actions ----------
 async function quickUpdate(ad, fields) {
   try {
-    await sendAd('PUT', `/api/admin/spots/${ad.id}`, fields);
+    await saveSpot(ad.id, fields);
     await refresh();
   } catch (err) {
     toast(err.message);
@@ -408,7 +406,7 @@ async function quickUpdate(ad, fields) {
 async function deleteAd(ad) {
   if (!confirm(`Delete “${ad.title}”? This removes it from the TV and deletes its file.`)) return;
   try {
-    await api(`/api/admin/spots/${ad.id}`, { method: 'DELETE' });
+    await api('delete-spot', { body: { id: ad.id } });
     toast('Ad deleted');
     await refresh();
   } catch (err) {
@@ -418,7 +416,7 @@ async function deleteAd(ad) {
 
 async function saveOrder(ids) {
   try {
-    state.ads = await api('/api/admin/order', { method: 'PUT', body: { ids } });
+    state.ads = await api('order', { body: { ids } });
     render();
   } catch (err) {
     toast(err.message);
@@ -515,8 +513,6 @@ function openEditor(ad = null) {
   form.enabled.checked = a.enabled !== false;
   form.notes.value = a.notes || '';
   videoLength = a.videoLength || 0;
-  $('#local-note').hidden = !a.local;
-  $('#type-picker').hidden = Boolean(a.local);
 
   syncEditor();
   editor.showModal();
@@ -534,12 +530,13 @@ function syncEditor() {
   form.querySelectorAll('[data-show]').forEach((node) => {
     node.hidden = !node.dataset.show.split(' ').includes(type);
   });
-  if (editing?.local) $('#file-field').hidden = true;
 
   if (type !== 'text') {
     fileInput.accept = `${type}/*`;
     const sameTypeFile = editing && editing.type === type;
     $('#file-label').textContent = `${type === 'video' ? 'Video' : 'Image'} file${sameTypeFile ? ' (leave empty to keep the current one)' : ''}`;
+    const limit = state.storage?.maxUpload ? ` Up to ${fmtSize(state.storage.maxUpload)}.` : '';
+    $('#file-help').textContent = `${type === 'video' ? 'MP4, WebM or MOV' : 'JPG, PNG, WebP or GIF'}, best at 1920 × 1080 (landscape, 16:9).${limit}`;
   }
 
   const fullVideo = type === 'video' && form.playFullVideo.checked;
@@ -676,8 +673,7 @@ form.addEventListener('submit', async (e) => {
 
   try {
     const onProgress = (p) => (bar.firstElementChild.style.width = `${Math.round(p * 100)}%`);
-    if (editing) await sendAd('PUT', `/api/admin/spots/${editing.id}`, fields, file, onProgress);
-    else await sendAd('POST', '/api/admin/spots', fields, file, onProgress);
+    await saveSpot(editing?.id, fields, file, onProgress);
     editor.close();
     toast(editing ? 'Ad updated. The TV picks it up within 30 seconds.' : 'Ad added. The TV picks it up within 30 seconds.');
     await refresh();
@@ -693,20 +689,9 @@ form.addEventListener('submit', async (e) => {
 $('#new-spot').addEventListener('click', () => openEditor());
 
 // ---------- Settings ----------
-$('#use-local').addEventListener('change', async (e) => {
-  try {
-    state.settings = await api('/api/admin/settings', { method: 'PUT', body: { useLocalAds: e.target.checked } });
-    toast(e.target.checked ? 'Folder ads are on. The TV picks this up within 30 seconds.' : 'Folder ads are off. The TV picks this up within 30 seconds.');
-    render();
-  } catch (err) {
-    toast(err.message);
-    e.target.checked = !e.target.checked;
-  }
-});
-
 $('#music-on').addEventListener('change', async (e) => {
   try {
-    state.settings = await api('/api/admin/settings', { method: 'PUT', body: { musicEnabled: e.target.checked } });
+    state.settings = await api('settings', { body: { musicEnabled: e.target.checked } });
     toast(e.target.checked ? 'Music is on and ads are muted. The TV picks this up within 30 seconds.' : 'Music is off. The TV picks this up within 30 seconds.');
     render();
   } catch (err) {
@@ -718,7 +703,7 @@ $('#music-on').addEventListener('change', async (e) => {
 $('#music-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
-    state.settings = await api('/api/admin/settings', { method: 'PUT', body: { musicUrl: e.target.musicUrl.value } });
+    state.settings = await api('settings', { body: { musicUrl: e.target.musicUrl.value } });
     toast('Music link saved. The TV picks it up within 30 seconds.');
     render();
   } catch (err) {
@@ -730,8 +715,7 @@ $('#settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
   try {
-    state.settings = await api('/api/admin/settings', {
-      method: 'PUT',
+    state.settings = await api('settings', {
       body: { transition: f.transition.value, idleTitle: f.idleTitle.value, idleSubtitle: f.idleSubtitle.value }
     });
     $('#settings-saved').textContent = 'Saved';

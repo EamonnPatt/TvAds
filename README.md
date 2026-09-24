@@ -1,7 +1,8 @@
 # Northumberland Fitness — TV Ad Screen
 
 A fullscreen ad player for the gym TV that loops ads for local businesses, plus a
-password-protected admin panel for managing them.
+password-protected admin panel for managing them. It runs on ordinary cPanel
+hosting (GoDaddy): plain PHP and a MySQL database, no Node.
 
 - **TV screen** at `/`: plays the ads fullscreen, in order, forever. Picks up
   changes from the admin panel on its own within 30 seconds, so nobody has to
@@ -9,34 +10,31 @@ password-protected admin panel for managing them.
 - **Admin panel** at `/admin`: add, edit, reorder, pause and schedule ads, and
   see what the TV is showing right now.
 
-## Where the ads come from
+## Where the ads are kept
 
-There are two kinds of ads, and both show up in the admin panel's list:
+Everything lives in the MySQL database: the ads, their images and videos, the
+screen settings, and what the TV last reported. Nothing is kept in the repo or
+in files on the server, so updating the site's files never touches the ads.
 
-- **Folder ads**: every image and video in the repo's [`ads/`](ads/) folder
-  (tagged "Folder" in the admin panel). New files are added to the end of the
-  list, in filename order. Because the files are in the repo, they survive
-  restarts on Render's free plan.
-- **Uploaded ads**: added through the admin panel's **+ New ad** button.
-
-The **Play folder ads** switch at the top of the list turns all the folder ads
-on or off at once. You can edit folder ads like any other ad (name, length,
-plays per loop, dates, fit, sound, order, pause). Two things can only be done in
-the repo: swapping the file and deleting the ad.
-
-Folder videos start out playing their full length, and folder images start at
-10 seconds. Supported files: `.mp4 .webm .mov .jpg .jpeg .png .webp .gif`.
-
-> Your edits to folder ads and the switch setting are saved in `ads.json`. On
-> Render's free plan that file is wiped on restart, so the folder ads go back to
-> their defaults (the files themselves stay).
+- Ads are added with the admin panel's **+ New ad** button. Files go up in 1 MB
+  pieces, so PHP's upload limits and MySQL's packet size don't get in the way.
+  A piece that fails is retried.
+- The largest file you can upload is `max_upload_mb` in `config.php`.
+- **Mind the database's size.** Videos take up most of it. The admin panel shows
+  how much space the images and videos use, and each ad's file size. GoDaddy
+  limits how big a database can get (reportedly 1 GB on some plans). Check your
+  plan's limit in cPanel's **Statistics** sidebar. A 30-second 1080p ad is
+  usually 5–20 MB.
+- The tables are created automatically on the first visit. Their names start
+  with `table_prefix` and then `tv_` (for example `bz_tv_ads`), so the ad
+  screen can share a database with another site without clashing.
 
 ## What an ad can be
 
 | Type | Use it for |
 | --- | --- |
-| **Image** | A finished ad graphic (JPG/PNG/WebP). Best at 1920 × 1080. |
-| **Video** | An MP4/WebM commercial. Muted by default; sound can be turned on per ad. |
+| **Image** | A finished ad graphic (JPG/PNG/WebP/GIF). Best at 1920 × 1080. |
+| **Video** | An MP4/WebM/MOV commercial. Muted by default; sound can be turned on per ad. |
 | **Text slide** | A business with no artwork: name, headline, details and a phone/website line, in their colors. |
 
 Each ad has:
@@ -61,9 +59,7 @@ stream (or a YouTube link) on the TV, behind the ads. While it's on, **every ad
 is muted**, even ads set to play sound. Turn it off and those ads get their
 sound back.
 
-- It's on by default, playing the Heart 80s radio stream. Like the other
-  settings, the switch and link are saved in `ads.json`, so on Render's free
-  plan a restart puts them back to the defaults.
+- It's on by default, playing the Heart 80s radio stream.
 - **Use a radio stream on a smart TV.** The TV decodes the stream itself and
   plays it through the browser's Web Audio API, which runs alongside the video
   ads. Samsung TVs can only play one video or audio element at a time, so an
@@ -88,37 +84,78 @@ sound back.
   the TV, starting Chrome with `--autoplay-policy=no-user-gesture-required`
   means no click is ever needed.
 
-## 1. Install
+## Putting it on cPanel (GoDaddy)
 
-```
-cd server
-npm install
-```
+The repo has two folders, and they go to two places on the server:
 
-## 2. Set the admin password
+| Folder | Where it goes | What's in it |
+| --- | --- | --- |
+| `public_html/` | The website's folder | The TV page, the admin panel, and `api.php` |
+| `adscreen-private/` | Your home folder, **next to** `public_html` (not inside it) | The PHP code and `config.php` with the passwords |
 
-Add this line to `server/.env` (see `server/.env.example`):
+`api.php` finds `adscreen-private` in any folder above it, so it doesn't matter
+how deep the website's folder is.
 
-```
-ADMIN_PASSWORD=pick-something-long
-```
+### 1. The database
 
-The admin panel stays locked until this is set. Changing it logs everyone out.
+In cPanel → **MySQL Databases**, create a database and a user (or use the ones
+you already have), and add the user to the database with **ALL PRIVILEGES**. On
+GoDaddy both names start with your cPanel username, e.g. `abc123_biztek`. That
+full name is what goes in `config.php`.
 
-The `RESEND_API_KEY`, `FROM_EMAIL` and `TO_EMAIL` values from the waiver kiosk
-are still in `.env` and `render.yaml`. The ad screen doesn't use them, but they
-were kept on purpose.
+### 2. config.php
 
-## 3. Run it
+In `adscreen-private`, copy `config.sample.php` to `config.php` and fill in:
 
-```
-cd server
-npm start
-```
+- `db_name`, `db_user`, `db_pass`: from step 1. `db_host` stays `localhost`.
+- `table_prefix`: any short prefix, e.g. `bz_`.
+- `admin_password`: the admin panel's password. Anyone who has it can change
+  what the TV shows, so make it long. Changing it logs everyone out.
+- `max_upload_mb`: the largest file you can upload.
 
-- TV: open `http://localhost:3000` and click once. That goes fullscreen and
-  allows sound for ads that have it turned on.
-- Admin: open `http://localhost:3000/admin`.
+`config.php` is git-ignored, so the passwords never end up in the repo.
+
+### 3. Pick where the site lives
+
+If the domain's main website is already in `public_html`, give the ad screen
+its own spot so the two don't overwrite each other:
+
+- **A subdomain** (tidiest): cPanel → **Domains** → create e.g.
+  `tv.yourdomain.com`. cPanel shows the folder it made for it (e.g.
+  `public_html/tv.yourdomain.com`). That's the website's folder.
+- **A subfolder**: e.g. `public_html/tv`, which opens at `yourdomain.com/tv/`.
+
+Don't call the folder or subdomain **ads**. TV browsers with ad blocking
+(Samsung's, for one) block addresses with "ads" in them.
+
+### 4. Upload
+
+In cPanel → **File Manager** (or over FTP):
+
+1. Upload the `adscreen-private` folder into your home folder (the one that
+   holds `public_html`), with the `config.php` from step 2 in it.
+2. Upload the **contents** of the repo's `public_html` folder into the
+   website's folder from step 3. That includes `.htaccess`. File Manager hides
+   files starting with a dot unless **Settings → Show Hidden Files** is ticked.
+
+### 5. PHP version
+
+cPanel → **MultiPHP Manager** (or **Select PHP Version**): use PHP 7.4 or newer
+(8.x is best). The `pdo_mysql` extension it needs is on by default.
+
+### 6. Check it
+
+- Open `https://<your site>/admin`, log in, and add the ads. The three that used
+  to be in the repo's `ads/` folder (`ad1.mp4`, `ad2.mp4`, `ad3.png`) are still
+  on the computer this repo was on, just no longer in git. Add them with
+  **+ New ad**.
+- If something's wrong with `config.php` or the database, the admin panel's
+  login screen says what to fix.
+- Turn on HTTPS for the site: cPanel → **Domains** → **Force HTTPS Redirect**.
+  The TV page can only keep the screen awake over https.
+
+**Updating the site later:** upload the changed files again. `config.php` and
+the database stay as they are, so no ads or settings are lost.
 
 ## Setting up the TV
 
@@ -127,52 +164,40 @@ laptop plugged in over HDMI will work. Point its browser at the site's address
 and click once to go fullscreen.
 
 - Turn off the TV's/device's sleep and screensaver settings. The page asks the
-  browser to keep the screen awake, but that only works over https (or
-  localhost).
+  browser to keep the screen awake, but that only works over https.
 - The screen never goes black between ads: the current ad stays up until the
   next one has loaded. If the internet drops, it keeps looping the ads it has
   cached (skipping any it can't load), and it reloads itself every 12 hours.
 - The admin panel's top bar shows whether the TV is on and what it's showing.
 
-## Deploying to production (Render)
+## Running it on your own computer
 
-The repo includes a `render.yaml` blueprint (root directory `server`, build
-`npm install`, start `npm start`).
+You need PHP 7.4+ with `pdo_mysql` and a MySQL or MariaDB server. Put the
+database details in `adscreen-private/config.php`, then:
 
-1. Push this repo to GitHub.
-2. In Render, **New → Blueprint** and connect the repo.
-3. Fill in the environment variables it asks for. `ADMIN_PASSWORD` is the one
-   that matters; the Resend ones can stay as they are. Don't set `PORT`;
-   Render sets it.
-4. Deploy, then open the Render URL on the TV and `<url>/admin` anywhere else.
+```
+php -S localhost:8000 -t public_html
+```
 
-> **Important: uploaded ads need a persistent disk.** Render's free plan wipes
-> the server's files on every deploy and restart, which would delete all
-> uploaded ads and settings. To keep them, switch the service to a paid plan
-> (Starter), attach a disk, and set `DATA_DIR` to the disk's mount path. The
-> commented-out lines in `render.yaml` are already set up for this: uncomment
-> the `disk:` block and the `DATA_DIR` variable. The alternative is to run the
-> server on an always-on PC at the gym, where files are kept on its own disk.
-
-The TV checks in every 30 seconds, which also stops Render's free tier from
-putting the service to sleep while the TV is on.
-
-**Custom domain (optional):** in Render add a Custom Domain (e.g.
-`ads.northumberlandfitness.com`), then add the CNAME record Render gives you in
-cPanel's **Zone Editor**.
+- TV: open `http://localhost:8000` and click once. That goes fullscreen and
+  allows sound for ads that have it turned on.
+- Admin: open `http://localhost:8000/admin.html`. The short `/admin` address
+  comes from `.htaccess`, which only the real server reads.
 
 ## Project structure
 
 ```
-public/            Frontend (vanilla HTML/CSS/JS)
-  index.html         TV screen
-  display.js/.css    Ad player: rotation, transitions, background music, fullscreen, heartbeat
-  admin.html         Admin panel
-  admin.js/.css      Admin panel logic and styles
-  textslide.js/.css     Text-slide renderer shared by the TV and admin preview
-server/            Backend (Express)
-  index.js           API: login, playlist, ad upload/edit, TV heartbeat
-  store.js           Saves ads + settings to DATA_DIR/ads.json
-  data/              Default DATA_DIR: ads.json and uploads/ (git-ignored)
-render.yaml        Render deployment config
+public_html/         Goes in the website's folder
+  index.html           TV screen
+  display.js/.css      Ad player: rotation, transitions, background music, fullscreen, heartbeat
+  admin.html           Admin panel
+  admin.js/.css        Admin panel logic and styles
+  textslide.js/.css    Text-slide renderer shared by the TV and admin preview
+  api.php              Every request from the TV and admin panel; hands off to adscreen-private
+  .htaccess            /admin address, and makes browsers pick up new versions of the pages
+adscreen-private/    Goes next to public_html, outside it
+  app.php              The API: login, playlist, uploads, ad edits, TV heartbeat, serving images and videos
+  store.php            The database: tables, ads, settings, and files stored in 1 MB pieces
+  config.sample.php    Copy to config.php and fill in (config.php is git-ignored)
+  .htaccess            Blocks web access in case the folder ends up inside public_html
 ```

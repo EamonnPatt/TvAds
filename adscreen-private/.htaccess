@@ -1,0 +1,8 @@
+# This folder should sit outside public_html. If it ends up inside by mistake, this keeps its files
+# (config.php has the database password) from being served.
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Deny from all
+</IfModule>

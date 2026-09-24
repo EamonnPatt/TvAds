@@ -1,17 +1,15 @@
-node_modules/
-
 # Secrets — never commit real credentials
+adscreen-private/config.php
 .env
 .env.local
 .env.*.local
 
+# Ad files live in the database now, not the repo
+ads/
+
 # Logs
-npm-debug.log*
 *.log
 
 # OS/editor cruft
 .DS_Store
 Thumbs.db
-
-# Ads and uploaded media (managed through the admin panel, not the repo)
-server/data/

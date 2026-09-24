@@ -23,7 +23,7 @@ const bootedAt = Date.now();
 // ---------- Server sync ----------
 async function fetchPlaylist() {
   try {
-    const res = await fetch('/api/playlist', { cache: 'no-store' });
+    const res = await fetch('api.php?action=playlist', { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const changed = !playlist || data.updatedAt !== playlist.updatedAt;
@@ -42,7 +42,7 @@ async function fetchPlaylist() {
 function heartbeat() {
   const music = musicReport();
   lastMusicReport = JSON.stringify(music);
-  fetch('/api/heartbeat', {
+  fetch('api.php?action=heartbeat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ adId: currentAd?.id || null, title: currentAd?.title || null, music })

@@ -1,0 +1,13 @@
+# yourdomain.com/admin opens the admin panel.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^admin$ admin.html [L]
+</IfModule>
+
+# The TV screen runs for days, so have browsers check for a new version of the page and its scripts each time
+# they load them instead of reusing an old copy.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|css)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
