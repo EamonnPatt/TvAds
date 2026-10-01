@@ -242,21 +242,22 @@ function showIdle() {
 }
 
 // ---------- Background music ----------
-// While music is on in the admin panel, every ad is muted and the link plays
-// behind the ads: a radio stream through the Web Audio API, or a YouTube link
-// through a hidden YouTube player. Samsung TVs play one video or audio element
-// at a time, so a YouTube player or an <audio> element takes turns with the
-// video ads there (silent video, then a black screen with music). Web Audio
-// doesn't go through the TV's media player, so streams play that way.
+// While music is on in the admin panel, every ad is muted and the music plays
+// behind the ads: a radio stream or the songs uploaded in the admin panel
+// through the Web Audio API, or a YouTube link through a hidden YouTube player.
+// Samsung TVs play one video or audio element at a time, so a YouTube player or
+// an <audio> element takes turns with the video ads there (silent video, then a
+// black screen with music). Web Audio doesn't go through the TV's media player,
+// so streams and songs play that way.
 const SILENT_WAV =
   'data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
 const MPEG_DECODER_URL = 'https://cdn.jsdelivr.net/npm/mpg123-decoder@1.0.3/dist/mpg123-decoder.min.js';
 const musicBox = document.getElementById('music');
-let musicKey = ''; // the link loaded now ('' = none)
-let musicStream = null; // radio stream: { url, waitingForClick, connection }
+let musicKey = ''; // the music loaded now, not counting the songs ('' = none)
+let musicAudio = null; // radio stream and/or songs: { stream, songs, queue, lastSongId, waitingForClick, connection }
 let musicPlayer = null; // YouTube player
 let musicReady = false; // the YouTube player is ready for commands
-let musicError = null; // shown in the admin panel: YouTube's error code, 'stream' or 'format'
+let musicError = null; // shown in the admin panel: YouTube's error code, 'stream', 'format', 'songs' or 'decoder'
 let musicSkips = 0; // playlist videos skipped in a row because they wouldn't play
 let musicBlocked = false; // the browser refused YouTube sound even after a click
 let lastMusicReport = '';
@@ -265,19 +266,22 @@ function musicOn() {
   return Boolean(playlist?.music);
 }
 
-// Runs on every playlist fetch, but only acts when music was turned on or off
-// or the link changed.
+// Runs on every playlist fetch, but only starts over when music was turned on
+// or off or the link changed. Songs added or deleted are picked up as the music
+// goes along.
 function syncMusic() {
   const music = playlist.music;
-  const key = music ? JSON.stringify(music) : '';
-  if (key === musicKey) return;
+  const key = music ? JSON.stringify({ ...music, songs: undefined }) : '';
+  if (key === musicKey) {
+    if (musicAudio) updateSongs(musicAudio, music.songs || []);
+    return;
+  }
   stopMusic();
   musicKey = key;
   if (music) {
     const video = currentLayer?.querySelector('video');
     if (video) video.muted = true; // the ad on screen goes quiet too
-    if (music.stream) startStream(music.stream);
-    else {
+    if (music.videoId || music.list) {
       loadYouTubeApi().then(
         () => key === musicKey && startYouTube(music),
         (err) => {
@@ -285,14 +289,14 @@ function syncMusic() {
           if (key === musicKey) musicKey = '';
         }
       );
-    }
+    } else startAudio(music.stream || null, music.songs || []);
   }
   reportMusic();
 }
 
 function stopMusic() {
-  if (musicStream) closeConnection(musicStream);
-  musicStream = null;
+  if (musicAudio) closeConnection(musicAudio);
+  musicAudio = null;
   musicPlayer?.destroy();
   musicPlayer = null;
   musicReady = false;
@@ -304,17 +308,17 @@ function stopMusic() {
 
 // Called on every click on the page, which is what lets browsers play sound.
 function unmuteMusic() {
-  if (musicStream?.waitingForClick) connectStream(musicStream);
+  if (musicAudio?.waitingForClick) connectAudio(musicAudio);
   else if (musicReady) unmuteYouTube();
 }
 
 // Safety net for a TV that runs all day: restart the music if it stopped.
 function keepMusicPlaying() {
-  if (musicStream) {
-    // Reconnect if the stream has gone quiet: a dropped connection, the station
-    // hanging up, or a link that didn't work last time.
-    const conn = musicStream.connection;
-    if (!musicStream.waitingForClick && (!conn || Date.now() - conn.lastDataAt > 20_000)) connectStream(musicStream);
+  if (musicAudio) {
+    // Start again if nothing has been queued to play for a while: a dropped
+    // connection, the station hanging up, or nothing that would play last time.
+    const conn = musicAudio.connection;
+    if (!musicAudio.waitingForClick && (!conn || Date.now() - conn.lastAudioAt > 20_000)) connectAudio(musicAudio);
     return;
   }
   if (!musicReady || musicError != null) return;
@@ -326,9 +330,11 @@ function keepMusicPlaying() {
 function musicReport() {
   if (!musicOn()) return { state: 'off' };
   if (musicError != null) return { state: 'error', error: musicError };
-  if (musicStream) {
-    if (musicStream.waitingForClick) return { state: 'muted' };
-    return { state: musicStream.connection?.playing ? 'playing' : 'loading' };
+  if (musicAudio) {
+    if (musicAudio.waitingForClick) return { state: 'muted' };
+    const now = nowPlaying(musicAudio.connection);
+    if (!now) return { state: 'loading' };
+    return { state: 'playing', title: now.title, ...(now.fallback ? { fallback: true } : {}) };
   }
   if (!musicReady) return { state: 'loading' };
   const title = musicPlayer.getVideoData?.()?.title || null;
@@ -341,80 +347,200 @@ function reportMusic() {
   if (JSON.stringify(musicReport()) !== lastMusicReport) heartbeat();
 }
 
-// ----- Radio stream -----
-// The stream is fetched and decoded here (MP3, by a WebAssembly decoder in a
-// worker), and the decoded pieces are queued back to back in Web Audio. The
-// station has to allow other sites to fetch it (CORS); most do.
+// ----- Radio stream and songs -----
+// The stream or song is fetched and decoded here (MP3, by a WebAssembly decoder
+// in a worker), and the decoded pieces are queued back to back in Web Audio. A
+// station has to allow other sites to fetch its stream (CORS); most do. The
+// songs come from this site. When the station isn't working, the songs play
+// instead, and the station gets another try after each song.
+const STREAM_TIMEOUT_MS = 8000; // a station that has sent nothing to play for this long isn't working
+const SONG_AHEAD_S = 20; // seconds of a song decoded ahead of what's playing, so the next one starts on time
+const SONG_PIECE_BYTES = 32768; // how much of a song is decoded at a time
 let audioContext = null;
 let mpegDecoder = null;
 
-function startStream(url) {
-  musicStream = { url, waitingForClick: false, connection: null };
-  connectStream(musicStream);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function startAudio(stream, songs) {
+  musicAudio = { stream, songs, queue: [], lastSongId: null, waitingForClick: false, connection: null };
+  connectAudio(musicAudio);
 }
 
-async function connectStream(stream) {
-  if (stream.connection) closeConnection(stream);
-  const conn = { controller: new AbortController(), lastDataAt: Date.now(), playhead: 0, playing: false, output: null, decoder: null };
-  stream.connection = conn;
-  const current = () => stream === musicStream && stream.connection === conn;
+// Takes in the songs from the latest playlist fetch.
+function updateSongs(audio, songs) {
+  const hadNone = !audio.songs.length;
+  audio.songs = songs;
+  // The music gave up for want of songs: start again now there are some.
+  if (hadNone && songs.length && musicError != null) connectAudio(audio);
+}
+
+async function connectAudio(audio) {
+  if (audio.connection) closeConnection(audio);
+  const conn = { controller: null, lastAudioAt: Date.now(), playhead: 0, playing: false, output: null, decoder: null, marks: [], queued: null };
+  audio.connection = conn;
+  const current = () => audio === musicAudio && audio.connection === conn;
 
   // Browsers hold sound back until someone clicks the page. Until then, don't
   // connect at all; the click (unmuteMusic) comes back here.
   const ctx = await runningAudioContext();
   if (!current()) return;
-  stream.waitingForClick = !ctx;
+  audio.waitingForClick = !ctx;
   reportMusic();
   if (!ctx) return;
 
   try {
-    const [res, Decoder] = await Promise.all([
-      fetch(stream.url, { cache: 'no-store', signal: conn.controller.signal }),
-      loadMpegDecoder()
-    ]);
+    const Decoder = await loadMpegDecoder();
     if (!current()) return;
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    if (!/mpeg|mp3|octet-stream/i.test(res.headers.get('content-type') || '')) {
-      conn.controller.abort();
-      musicError = 'format';
-      reportMusic();
-      return;
-    }
     conn.decoder = new Decoder();
     await conn.decoder.ready;
     if (!current()) return;
-    conn.output = ctx.createGain(); // disconnecting this silences whatever is still queued
-    conn.output.connect(ctx.destination);
+  } catch (err) {
+    if (!current()) return;
+    console.warn(`No music: ${err.message}. Trying again at the next check.`);
+    musicError = 'decoder';
+    reportMusic();
+    return;
+  }
+  conn.output = ctx.createGain(); // disconnecting this silences whatever is still queued
+  conn.output.connect(ctx.destination);
 
+  // The station plays until it stops working, then a song, then the station
+  // gets another try, and so on. Without a station the songs play one after
+  // another. If nothing will play, this gives up until the next check.
+  let failures = 0; // songs in a row that wouldn't play
+  for (;;) {
+    if (audio.stream) {
+      const why = await playStream(conn, audio.stream, current);
+      if (!current()) return;
+      if (!audio.songs.length) {
+        musicError = why;
+        break;
+      }
+    }
+    if (!audio.songs.length) {
+      musicError = 'songs';
+      break;
+    }
+    const played = await playSong(conn, nextSong(audio), Boolean(audio.stream), current);
+    if (!current()) return;
+    failures = played ? 0 : failures + 1;
+    if (failures >= Math.min(audio.songs.length, 3)) {
+      musicError = 'songs';
+      break;
+    }
+  }
+  console.warn(`No music: ${musicError}. Trying again at the next check.`);
+  reportMusic();
+}
+
+// Plays the station until it stops working, then returns why: 'stream' (it
+// isn't answering, doesn't allow other sites, went quiet or hung up) or
+// 'format' (it isn't an MP3 stream).
+async function playStream(conn, url, current) {
+  const what = { title: null, fallback: false };
+  const startedAt = Date.now();
+  const watchdog = setInterval(() => {
+    if (Date.now() - Math.max(startedAt, conn.lastAudioAt) > STREAM_TIMEOUT_MS) conn.controller.abort();
+  }, 1000);
+  try {
+    const res = await fetchFor(conn, url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!/mpeg|mp3|octet-stream/i.test(res.headers.get('content-type') || '')) {
+      conn.controller.abort();
+      return 'format';
+    }
+    await conn.decoder.reset();
     const reader = res.body.getReader();
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
-      conn.lastDataAt = Date.now();
       conn.decoder
         .decode(value)
-        .then((audio) => current() && queueAudio(conn, audio))
+        .then((audio) => current() && queueAudio(conn, audio, what))
         .catch(() => {});
     }
     throw new Error('the station ended the stream');
   } catch (err) {
-    if (!current()) return;
-    console.warn(`Music stream: ${err.message}. Reconnecting at the next check.`);
-    musicError = 'stream';
-    reportMusic();
+    if (current()) console.warn(`Music stream: ${err.message}.`);
+    return 'stream';
+  } finally {
+    clearInterval(watchdog);
   }
 }
 
-function closeConnection(stream) {
-  const conn = stream.connection;
-  stream.connection = null;
-  conn.controller.abort();
+// Plays one song: downloads it, then decodes it a piece at a time, staying
+// SONG_AHEAD_S seconds ahead of what's playing. Returns whether any of it played.
+async function playSong(conn, song, fallback, current) {
+  const what = { title: song.title, fallback };
+  let played = false;
+  try {
+    const res = await fetchFor(conn, song.src, {});
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!current()) return false;
+    await conn.decoder.reset();
+    for (let at = 0; at < bytes.length; at += SONG_PIECE_BYTES) {
+      // Wait while enough is queued, or while the browser has paused the sound.
+      while (current() && (audioContext.state !== 'running' || conn.playhead - audioContext.currentTime > SONG_AHEAD_S)) {
+        await sleep(1000);
+      }
+      if (!current()) return played;
+      // slice, not subarray: handing a subarray to the decoder's worker would copy the whole song each time.
+      const audio = await conn.decoder.decode(bytes.slice(at, at + SONG_PIECE_BYTES));
+      if (!current()) return played;
+      if (queueAudio(conn, audio, what)) played = true;
+    }
+    if (!played) throw new Error('nothing in it would play');
+  } catch (err) {
+    if (current()) console.warn(`Song "${song.title}": ${err.message}.`);
+  }
+  return played;
+}
+
+// The songs play in a shuffled order, and are shuffled again once they've all
+// played. A song added in the admin panel joins in at the next shuffle.
+function nextSong(audio) {
+  for (;;) {
+    if (!audio.queue.length) {
+      audio.queue = shuffle(audio.songs.map((song) => song.id));
+      // Don't play the same song twice in a row across a reshuffle.
+      if (audio.queue.length > 1 && audio.queue[0] === audio.lastSongId) audio.queue.push(audio.queue.shift());
+    }
+    const id = audio.queue.shift();
+    const song = audio.songs.find((s) => s.id === id); // it may have been deleted since
+    if (song) {
+      audio.lastSongId = id;
+      return song;
+    }
+  }
+}
+
+function shuffle(list) {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
+// A fetch that closing the connection cancels.
+function fetchFor(conn, url, options) {
+  conn.controller = new AbortController();
+  return fetch(url, { ...options, signal: conn.controller.signal });
+}
+
+function closeConnection(audio) {
+  const conn = audio.connection;
+  audio.connection = null;
+  conn.controller?.abort();
   conn.output?.disconnect();
   conn.decoder?.free();
 }
 
-function queueAudio(conn, { channelData, samplesDecoded, sampleRate }) {
-  if (!samplesDecoded || audioContext.state !== 'running') return;
+// Queues decoded audio to play straight after what's already queued. `what` is
+// the song (or the station) it's from. Returns whether there was anything to queue.
+function queueAudio(conn, { channelData, samplesDecoded, sampleRate }, what) {
+  if (!samplesDecoded || audioContext.state !== 'running') return false;
   const buffer = audioContext.createBuffer(channelData.length, samplesDecoded, sampleRate);
   channelData.forEach((samples, i) => buffer.getChannelData(i).set(samples));
   const source = audioContext.createBufferSource();
@@ -424,12 +550,39 @@ function queueAudio(conn, { channelData, samplesDecoded, sampleRate }) {
   // any gap), then play the pieces back to back.
   if (conn.playhead < audioContext.currentTime) conn.playhead = audioContext.currentTime + 1;
   source.start(conn.playhead);
+  if (what !== conn.queued) markStart(conn, what);
   conn.playhead += buffer.duration;
+  conn.lastAudioAt = Date.now();
   if (!conn.playing) {
     conn.playing = true;
     musicError = null;
     reportMusic();
   }
+  return true;
+}
+
+// Notes when a song (or the station) starts playing, which can be a while
+// after it's queued, and tells the admin panel once it has.
+function markStart(conn, what) {
+  conn.queued = what;
+  conn.marks = [...conn.marks.slice(-3), { at: conn.playhead, ...what }];
+  reportOnceStarted(conn, conn.playhead);
+}
+
+function reportOnceStarted(conn, at) {
+  if (conn !== musicAudio?.connection) return;
+  // The audio clock can run a little behind the page's timers, so check it
+  // again rather than trusting that the wait was long enough.
+  const waitMs = (at - audioContext.currentTime) * 1000;
+  if (waitMs > 0) setTimeout(() => reportOnceStarted(conn, at), waitMs + 100);
+  else reportMusic();
+}
+
+// What's playing now ({ title, fallback }), or null if nothing has started yet.
+function nowPlaying(conn) {
+  let now = null;
+  for (const mark of conn?.marks || []) if (mark.at <= audioContext.currentTime) now = mark;
+  return now;
 }
 
 // The page's AudioContext once it's allowed to run, or null while the browser

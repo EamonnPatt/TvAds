@@ -477,6 +477,9 @@ input[type='color'] {
 }
 
 /* ---------- Music ---------- */
+.music-source {
+  margin-bottom: 14px;
+}
 .music-form {
   display: flex;
   align-items: flex-end;
@@ -497,13 +500,82 @@ input[type='color'] {
   color: #2f6d12;
 }
 .music-status[data-state='muted'],
-.music-status[data-state='blocked'] {
+.music-status[data-state='blocked'],
+.music-status[data-state='fallback'],
+.music-status[data-state='no-songs'] {
   color: var(--warn);
   font-weight: 600;
 }
 .music-status[data-state='error'] {
   color: var(--error);
   font-weight: 600;
+}
+
+.songs {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.songs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.songs-head h3 {
+  font-size: 15px;
+}
+.songs-head p {
+  margin: 4px 0 0;
+}
+.file-btn {
+  position: relative;
+  flex: none;
+}
+.file-btn input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.file-btn:has(input:focus-visible) {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.song-upload {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.song-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.song-list:empty {
+  display: none;
+}
+.song-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 12px;
+}
+.song-row + .song-row {
+  border-top: 1px solid var(--border);
+}
+.song-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- Settings ---------- */
@@ -808,5 +880,8 @@ input[type='color'] {
   }
   .topbar-actions .btn {
     flex: 1;
+  }
+  .songs-head {
+    flex-direction: column;
   }
 }

@@ -74,6 +74,16 @@ function login()
 }
 
 // ---------- TV ----------
+// What the TV plays for the music: the uploaded songs, or the link (a radio stream or YouTube) with the songs to
+// play when its station isn't working. Null while the music is off.
+function musicForTv(array $settings)
+{
+    if (!$settings['musicEnabled']) return null;
+    $songs = array_map(fn($song) => ['id' => $song['id'], 'title' => $song['title'], 'src' => $song['src']], listSongs());
+    $link = $settings['musicSource'] === 'link' ? parseMusicLink($settings['musicUrl']) : null;
+    return ($link ?: []) + ['songs' => $songs];
+}
+
 function playlist()
 {
     $settings = settings();
@@ -87,7 +97,7 @@ function playlist()
     respond([
         'ads' => $ads,
         'settings' => $settings,
-        'music' => $settings['musicEnabled'] ? parseMusicLink($settings['musicUrl']) : null,
+        'music' => musicForTv($settings),
         'updatedAt' => updatedAt(),
     ]);
 }
@@ -106,6 +116,7 @@ function heartbeat()
                 'state' => $music['state'],
                 'title' => $text($music['title'] ?? null, 200),
                 'error' => is_int($music['error'] ?? null) || is_string($music['error'] ?? null) ? clip((string) $music['error'], 20) : null,
+                'fallback' => ($music['fallback'] ?? false) === true, // playing the songs because the station isn't working
             ]
             : null,
         'seenAt' => nowMs(),
@@ -179,6 +190,7 @@ function adminState()
 {
     respond([
         'ads' => listAds(),
+        'songs' => listSongs(),
         'settings' => settings(),
         'updatedAt' => updatedAt(),
         'display' => tvStatus(),
@@ -241,6 +253,10 @@ try {
             respond(reorderAds($ids));
         case 'settings':
             respond(updateSettings(body()));
+        case 'save-song':
+            respond(addSong(body()['title'] ?? '', body()['mediaId'] ?? null));
+        case 'delete-song':
+            respond(deleteSong((string) (body()['id'] ?? '')));
     }
     throw new HttpError(404, 'Unknown action.');
 } catch (HttpError $e) {

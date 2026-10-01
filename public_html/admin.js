@@ -6,7 +6,7 @@ const TV_ONLINE_MS = 75_000; // the TV checks in every 30s
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
-let state = { ads: [], settings: {}, display: null };
+let state = { ads: [], songs: [], settings: {}, display: null };
 let editing = null; // ad being edited, or null for a new one
 let previewUrl = null; // object URL for a freshly picked file
 let videoLength = 0; // seconds, measured from the picked (or existing) video
@@ -64,8 +64,7 @@ const MEDIA_TYPES = {
 
 // Uploads a file into the database in pieces (the server says how big), so no PHP or MySQL size limit gets in
 // the way. A piece that fails is retried, so a Wi-Fi hiccup doesn't lose the whole upload. Returns the file's id.
-async function uploadFile(file, onProgress) {
-  const type = file.type || MEDIA_TYPES[file.name.split('.').pop().toLowerCase()] || '';
+async function uploadFile(file, onProgress, type = file.type || MEDIA_TYPES[file.name.split('.').pop().toLowerCase()] || '') {
   const { id, chunkSize } = await api('upload-start', { body: { size: file.size, type } });
   const count = Math.ceil(file.size / chunkSize);
   for (let seq = 0; seq < count; seq++) {
@@ -244,6 +243,7 @@ function render() {
     renderList();
   }
   renderMusic();
+  renderSongs();
   renderSettings();
 }
 
@@ -279,7 +279,7 @@ function renderSummary() {
     stat(live.length ? `${fmtDuration(loop)}${unknown ? '+' : ''}` : '—', 'full loop length'),
     stat(live.length && !unknown ? `${Math.floor((60 * 60) / Math.max(loop, 1))}×` : '—', 'loops per hour'),
     stat(String(upcoming.length), 'scheduled to start later'),
-    stat(fmtSize(state.storage?.used || 0), 'of images and videos in the database')
+    stat(fmtSize(state.storage?.used || 0), 'of ads and songs in the database')
   );
 }
 
@@ -347,7 +347,7 @@ function renderList() {
   );
 }
 
-// Why the TV couldn't play the music: YouTube's error codes, 'stream' or 'format'.
+// Why the TV couldn't play the link: YouTube's error codes, 'stream' or 'format'.
 const MUSIC_ERRORS = {
   stream: 'the station isn’t answering, doesn’t allow playing it from other sites, or this is its web page rather than the stream itself. The TV keeps retrying',
   format: 'it isn’t an MP3 stream (it may be the station’s web page rather than the stream itself)',
@@ -360,26 +360,64 @@ const MUSIC_ERRORS = {
 
 function renderMusic() {
   const on = state.settings.musicEnabled === true;
+  const source = state.settings.musicSource === 'songs' ? 'songs' : 'link';
   $('#music-on').checked = on;
+  $(`input[name="musicSource"][value="${source}"]`).checked = true;
+  $('#music-link').hidden = source !== 'link';
   const form = $('#music-form');
   if (!form.contains(document.activeElement)) form.musicUrl.value = state.settings.musicUrl || '';
 
   const tv = tvIsOnline() ? state.display.music : null;
   const tvState = tv?.state || 'off';
+  const noSongs = !state.songs.length;
+  let shown = tvState; // how the status line is colored
   let text = '';
   if (!on) text = tvState !== 'off' ? 'Turning off. The TV picks this up within 30 seconds.' : '';
-  else if (!tvIsOnline()) text = 'The TV is offline, so nothing is playing.';
+  else if (source === 'songs' && noSongs) {
+    shown = 'no-songs';
+    text = 'Add some songs below for the TV to play.';
+  } else if (!tvIsOnline()) text = 'The TV is offline, so nothing is playing.';
   else if (tvState === 'off') text = 'Turning on. The TV picks this up within 30 seconds.';
-  else if (tvState === 'playing') text = tv.title ? `Playing on the TV: “${tv.title}”` : 'Playing on the TV.';
+  else if (tvState === 'playing' && tv.fallback && source === 'link') {
+    shown = 'fallback';
+    text = `The radio station isn’t working, so the TV is playing your songs: “${tv.title}”. It tries the station again after each song.`;
+  } else if (tvState === 'playing') text = tv.title ? `Playing on the TV: “${tv.title}”` : 'Playing on the TV.';
   else if (tvState === 'muted') text = 'The TV’s browser is holding the sound back. Click anywhere on the TV screen once to start the music.';
   else if (tvState === 'blocked') text = 'The TV’s browser won’t let YouTube play sound, so the music is muted. Open the TV screen in Chrome or Edge instead.';
-  else if (tvState === 'error') text = `The TV can’t play this link: ${MUSIC_ERRORS[tv.error] || `YouTube error ${tv.error}`}.`;
-  else text = 'Starting the music on the TV…';
+  else if (tvState === 'error' && tv.error === 'songs') {
+    text = source === 'songs'
+      ? 'None of the songs would play on the TV. Check they’re real MP3 files. The TV keeps trying.'
+      : 'The radio station isn’t working, and none of the songs would play either. The TV keeps trying.';
+  } else if (tvState === 'error' && tv.error === 'decoder') {
+    text = 'The TV couldn’t load its MP3 player (from cdn.jsdelivr.net), so nothing is playing. The TV keeps trying.';
+  } else if (tvState === 'error') {
+    text = `The TV can’t play this link: ${MUSIC_ERRORS[tv.error] || `YouTube error ${tv.error}`}.`;
+    if (noSongs && (tv.error === 'stream' || tv.error === 'format')) text += ' Add some songs below and the TV will play them whenever the station isn’t working.';
+  } else text = 'Starting the music on the TV…';
 
   const box = $('#music-status');
   box.textContent = text;
-  box.dataset.state = on ? tvState : '';
+  box.dataset.state = on ? shown : '';
   box.hidden = !text;
+}
+
+let songsKey = '';
+function renderSongs() {
+  const key = JSON.stringify(state.songs);
+  if (key === songsKey) return;
+  songsKey = key;
+  $('#songs-empty').hidden = state.songs.length > 0;
+  $('#song-list').replaceChildren(
+    ...state.songs.map((song) =>
+      el(
+        'li',
+        { class: 'song-row' },
+        el('span', { class: 'song-title', title: song.title }, song.title),
+        el('span', { class: 'muted small' }, fmtSize(song.fileSize)),
+        el('button', { type: 'button', class: 'icon-btn danger', title: 'Delete', 'aria-label': `Delete ${song.title}`, onclick: () => deleteSong(song) }, trashIcon())
+      )
+    )
+  );
 }
 
 function renderSettings() {
@@ -700,6 +738,16 @@ $('#music-on').addEventListener('change', async (e) => {
   }
 });
 
+$('#music-source').addEventListener('change', async (e) => {
+  try {
+    state.settings = await api('settings', { body: { musicSource: e.target.value } });
+    toast(`The TV will play ${e.target.value === 'songs' ? 'your songs' : 'the link'}. It picks this up within 30 seconds.`);
+  } catch (err) {
+    toast(err.message);
+  }
+  renderMusic(); // puts the choice back if saving failed
+});
+
 $('#music-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
@@ -710,6 +758,53 @@ $('#music-form').addEventListener('submit', async (e) => {
     toast(err.message);
   }
 });
+
+// Uploads the picked MP3s one after another, each into the database like an ad's video.
+$('#song-files').addEventListener('change', async (e) => {
+  const input = e.target;
+  const files = [...input.files];
+  input.value = ''; // so picking the same file again still counts
+  const mp3s = files.filter((f) => /\.mp3$/i.test(f.name) || /^audio\/(mpeg|mp3)$/.test(f.type));
+  const skipped = files.length - mp3s.length;
+  if (skipped) toast(`Only MP3 files can be added, so ${skipped === 1 ? '1 file was' : `${skipped} files were`} skipped.`);
+  if (!mp3s.length) return;
+
+  const box = $('#song-upload');
+  const bar = box.querySelector('.progress div');
+  input.disabled = true;
+  box.hidden = false;
+  let added = 0;
+  try {
+    for (const [i, file] of mp3s.entries()) {
+      const title = file.name.replace(/\.[^.]+$/, '').replace(/_+/g, ' ').trim();
+      $('#song-upload-label').textContent = mp3s.length > 1 ? `Uploading ${i + 1} of ${mp3s.length}: ${title}` : `Uploading ${title}`;
+      bar.style.width = '0';
+      const mediaId = await uploadFile(file, (p) => (bar.style.width = `${Math.round(p * 100)}%`), 'audio/mpeg');
+      state.songs = await api('save-song', { body: { mediaId, title } });
+      added++;
+      renderSongs();
+      renderMusic();
+    }
+    toast(`${added === 1 ? 'Song' : `${added} songs`} added. The TV picks ${added === 1 ? 'it' : 'them'} up within 30 seconds.`);
+  } catch (err) {
+    toast(added ? `${err.message} (${added} of ${mp3s.length} were added.)` : err.message);
+  } finally {
+    input.disabled = false;
+    box.hidden = true;
+  }
+});
+
+async function deleteSong(song) {
+  if (!confirm(`Delete “${song.title}”? The TV stops playing it.`)) return;
+  try {
+    state.songs = await api('delete-song', { body: { id: song.id } });
+    toast('Song deleted');
+    renderSongs();
+    renderMusic();
+  } catch (err) {
+    toast(err.message);
+  }
+}
 
 $('#settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();

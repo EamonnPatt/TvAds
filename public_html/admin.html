@@ -51,15 +51,41 @@
             <span class="track"></span>
           </label>
         </div>
-        <form id="music-form" class="music-form">
-          <label>
-            <span>Radio stream or YouTube link</span>
-            <input name="musicUrl" inputmode="url" autocomplete="off" spellcheck="false" maxlength="500" required placeholder="https://…" />
-          </label>
-          <button type="submit" class="btn primary">Save link</button>
-        </form>
-        <p class="music-help muted small">Radio streams work on any TV. YouTube links only work well when a PC runs the TV screen: smart TVs can only play one video at a time, so YouTube fights the video ads there.</p>
+        <fieldset class="segmented music-source" id="music-source">
+          <legend>Play</legend>
+          <label><input type="radio" name="musicSource" value="link" /> A radio station or YouTube link</label>
+          <label><input type="radio" name="musicSource" value="songs" /> Our own songs</label>
+        </fieldset>
+        <div id="music-link">
+          <form id="music-form" class="music-form">
+            <label>
+              <span>Radio stream or YouTube link</span>
+              <input name="musicUrl" inputmode="url" autocomplete="off" spellcheck="false" maxlength="500" required placeholder="https://…" />
+            </label>
+            <button type="submit" class="btn primary">Save link</button>
+          </form>
+          <p class="music-help muted small">Radio streams work on any TV. YouTube links only work well when a PC runs the TV screen: smart TVs can only play one video at a time, so YouTube fights the video ads there.</p>
+        </div>
         <p id="music-status" class="music-status small" hidden></p>
+
+        <div class="songs">
+          <div class="songs-head">
+            <div>
+              <h3>Our songs</h3>
+              <p class="muted small">MP3 files, kept in the database. The TV plays them in a shuffled order. They’re also the backup for a radio station: if the station stops working, the TV plays these until it’s back.</p>
+            </div>
+            <label class="btn ghost file-btn">
+              + Add songs
+              <input type="file" id="song-files" accept=".mp3,audio/mpeg" multiple />
+            </label>
+          </div>
+          <div id="song-upload" class="song-upload" hidden>
+            <span id="song-upload-label" class="small"></span>
+            <div class="progress"><div></div></div>
+          </div>
+          <ol id="song-list" class="song-list"></ol>
+          <p id="songs-empty" class="muted small" hidden>No songs yet.</p>
+        </div>
       </section>
 
       <section class="panel">

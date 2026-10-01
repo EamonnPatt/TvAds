@@ -13,15 +13,16 @@ hosting (GoDaddy): plain PHP and a MySQL database, no Node.
 ## Where the ads are kept
 
 Everything lives in the MySQL database: the ads, their images and videos, the
-screen settings, and what the TV last reported. Nothing is kept in the repo or
-in files on the server, so updating the site's files never touches the ads.
+songs for the background music, the screen settings, and what the TV last
+reported. Nothing is kept in the repo or in files on the server, so updating the
+site's files never touches the ads.
 
 - Ads are added with the admin panel's **+ New ad** button. Files go up in 1 MB
   pieces, so PHP's upload limits and MySQL's packet size don't get in the way.
   A piece that fails is retried.
 - The largest file you can upload is `max_upload_mb` in `config.php`.
-- **Mind the database's size.** Videos take up most of it. The admin panel shows
-  how much space the images and videos use, and each ad's file size. GoDaddy
+- **Mind the database's size.** Videos and songs take up most of it. The admin
+  panel shows how much space the files use, and each ad's and song's size. GoDaddy
   limits how big a database can get (reportedly 1 GB on some plans). Check your
   plan's limit in cPanel's **Statistics** sidebar. A 30-second 1080p ad is
   usually 5–20 MB.
@@ -54,12 +55,23 @@ That's handy when telling a business how often their ad airs.
 
 ## Background music
 
-The **Background music** panel in the admin panel plays an internet radio
-stream (or a YouTube link) on the TV, behind the ads. While it's on, **every ad
-is muted**, even ads set to play sound. Turn it off and those ads get their
-sound back.
+The **Background music** panel in the admin panel plays music on the TV, behind
+the ads: an internet radio stream (or a YouTube link), or your own songs. While
+it's on, **every ad is muted**, even ads set to play sound. Turn it off and
+those ads get their sound back.
 
 - It's on by default, playing the Heart 80s radio stream.
+- **Your own songs.** Upload MP3s under **Our songs** with **+ Add songs**
+  (several at once is fine). They're kept in the database like the ads' videos,
+  so mind its size: a 4-minute song is usually 4–10 MB. Pick **Our own songs**
+  to play only them, in a shuffled order that starts over once every song has
+  played. They play the same way a radio stream does, so they work on smart TVs
+  alongside video ads.
+- **They're also the backup for a radio station.** With a radio link picked, if
+  the station stops working (it goes off the air, hangs up, or blocks the TV),
+  the TV switches to your songs within about 10 seconds and tries the station
+  again after each song. The panel says when this is happening. This doesn't
+  apply to YouTube links.
 - **Use a radio stream on a smart TV.** The TV decodes the stream itself and
   plays it through the browser's Web Audio API, which runs alongside the video
   ads. Samsung TVs can only play one video or audio element at a time, so an
@@ -204,15 +216,15 @@ php -S localhost:8000 -t public_html
 ```
 public_html/         Goes in the website's folder
   index.html           TV screen
-  display.js/.css      Ad player: rotation, transitions, background music, fullscreen, heartbeat
+  display.js/.css      Ad player: rotation, transitions, background music and songs, fullscreen, heartbeat
   admin.html           Admin panel
   admin.js/.css        Admin panel logic and styles
   textslide.js/.css    Text-slide renderer shared by the TV and admin preview
   api.php              Every request from the TV and admin panel; hands off to adscreen-private
   .htaccess            /admin address, and makes browsers pick up new versions of the pages
 adscreen-private/    Goes next to public_html, outside it
-  app.php              The API: login, playlist, uploads, ad edits, TV heartbeat, serving images and videos
-  store.php            The database: tables, ads, settings, and files stored in 1 MB pieces
+  app.php              The API: login, playlist, uploads, ad and song edits, TV heartbeat, serving files
+  store.php            The database: tables, ads, songs, settings, and files stored in 1 MB pieces
   config.sample.php    Copy to config.php and fill in (config.php is git-ignored)
   .htaccess            Blocks web access in case the folder ends up inside public_html
 .cpanel.yml          cPanel Git deployment: copies both folders into place

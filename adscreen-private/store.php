@@ -1,21 +1,24 @@
 <?php
-// Everything the ad screen keeps lives in the MySQL database: the ads, their images and videos, the screen
-// settings, and what the TV last reported. The tables are created on the first request.
+// Everything the ad screen keeps lives in the MySQL database: the ads, their images and videos, the songs for
+// the background music, the screen settings, and what the TV last reported. The tables are created on the first
+// request.
 
-const SCHEMA_VERSION = 1;
-// Images and videos are stored (and uploaded) in 1 MB pieces, which stays under the smallest MySQL packet and
-// PHP upload limits a host is likely to have.
+const SCHEMA_VERSION = 2;
+// Files are stored (and uploaded) in 1 MB pieces, which stays under the smallest MySQL packet and PHP upload
+// limits a host is likely to have.
 const CHUNK_SIZE = 1048576;
-// What can be uploaded, and the kind of ad each file makes.
+// What can be uploaded, and what each file is: an image or video ad, or a song.
 const MEDIA_TYPES = [
     'image/jpeg' => 'image', 'image/png' => 'image', 'image/webp' => 'image', 'image/gif' => 'image',
     'video/mp4' => 'video', 'video/webm' => 'video', 'video/quicktime' => 'video', 'video/x-m4v' => 'video',
+    'audio/mpeg' => 'audio', 'audio/mp3' => 'audio',
 ];
 const DEFAULT_SETTINGS = [
     'transition' => 'fade', // 'fade' | 'slide' | 'none'
     'idleTitle' => 'Northumberland Fitness',
     'idleSubtitle' => 'Advertise your business here: ask at the front desk',
-    'musicEnabled' => true, // play musicUrl behind the ads, with every ad muted
+    'musicEnabled' => true, // play music behind the ads, with every ad muted
+    'musicSource' => 'link', // 'link': musicUrl, with the songs when its station isn't working | 'songs': only the songs
     'musicUrl' => 'https://media-ssl.musicradio.com/Heart80sMP3', // Heart 80s radio stream
 ];
 
@@ -89,7 +92,7 @@ function databaseHint(PDOException $e)
             return 'The database refused the login. Check db_user and db_pass in config.php.';
         case 1044:
         case 1049:
-            return 'The database in db_name doesn’t exist, or db_user hasn’t been added to it. Check config.php and cPanel → MySQL Databases.';
+            return 'The database in db_name doesn’t exist, or db_user hasn’t been added to it. Check config.php against cPanel → MySQL Databases: the names are case-sensitive.';
         case 1142:
             return 'The database user can’t create tables. In cPanel → MySQL Databases, give it ALL PRIVILEGES on the database.';
         case 2002:
@@ -132,7 +135,7 @@ function ensureSchema(PDO $pdo)
         notes TEXT NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) $options");
-    // An uploaded image or video. ready = 0 while its pieces are still arriving.
+    // An uploaded image, video or song. ready = 0 while its pieces are still arriving.
     $pdo->exec('CREATE TABLE IF NOT EXISTS ' . t('media') . " (
         id VARCHAR(32) NOT NULL PRIMARY KEY,
         mime VARCHAR(50) NOT NULL,
@@ -146,6 +149,13 @@ function ensureSchema(PDO $pdo)
         seq INT UNSIGNED NOT NULL,
         data MEDIUMBLOB NOT NULL,
         PRIMARY KEY (media_id, seq)
+    ) $options");
+    // An MP3 uploaded for the background music. Its file is in the media tables, like an ad's.
+    $pdo->exec('CREATE TABLE IF NOT EXISTS ' . t('songs') . " (
+        id VARCHAR(32) NOT NULL PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        media_id VARCHAR(32) NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) $options");
     // The screen settings, plus updatedAt (bumped on every change so the TV knows to reload), tvStatus (what the
     // TV last reported) and schemaVersion. Values are JSON.
@@ -306,6 +316,7 @@ function updateSettings(array $input)
         'idleTitle' => $has('idleTitle') ? clip($input['idleTitle'], 120) : $current['idleTitle'],
         'idleSubtitle' => $has('idleSubtitle') ? clip($input['idleSubtitle'], 200) : $current['idleSubtitle'],
         'musicEnabled' => $has('musicEnabled') ? (bool) $input['musicEnabled'] : $current['musicEnabled'],
+        'musicSource' => in_array($input['musicSource'] ?? null, ['link', 'songs'], true) ? $input['musicSource'] : $current['musicSource'],
         'musicUrl' => $musicUrl,
         'updatedAt' => nowMs(),
     ]);
@@ -401,7 +412,7 @@ function createAd(array $fields, $mediaId)
     $pdo = db();
     $pdo->beginTransaction();
     try {
-        if ($mediaId) $fields['type'] = claimMedia($mediaId);
+        if ($mediaId) $fields['type'] = claimAdMedia($mediaId);
         $ad = sanitizeAd($fields);
         if ($ad['type'] !== 'text' && !$mediaId) throw new HttpError(400, 'Choose an image or video file to upload.');
         $id = newId();
@@ -431,7 +442,7 @@ function updateAd($id, array $fields, $mediaId)
         if (!$row) throw new HttpError(404, 'Ad not found.');
         $existing = rowToAd($row);
         if ($mediaId) {
-            $fields['type'] = claimMedia($mediaId);
+            $fields['type'] = claimAdMedia($mediaId);
         } elseif (isset($fields['type']) && $fields['type'] !== 'text' && $fields['type'] !== $existing['type']) {
             throw new HttpError(400, $fields['type'] === 'video' ? 'Upload a video to switch this ad to video.' : 'Upload an image to switch this ad to an image.');
         }
@@ -463,6 +474,15 @@ function deleteAd($id)
     $pdo->commit();
 }
 
+// Marks an ad's uploaded file as in use. Returns the kind of ad it makes. Called inside a transaction, so a song
+// uploaded by mistake is left unclaimed (and cleared out later).
+function claimAdMedia($id)
+{
+    $kind = claimMedia($id);
+    if ($kind === 'audio') throw new HttpError(400, 'An ad has to be an image or a video. Songs go in the Background music panel.');
+    return $kind;
+}
+
 // Puts the ads in the given order. Any ad not mentioned keeps its place at the end rather than being dropped.
 function reorderAds(array $ids)
 {
@@ -478,6 +498,52 @@ function reorderAds(array $ids)
     return listAds();
 }
 
+// ---------- Songs ----------
+// The MP3s uploaded for the background music. The TV shuffles them, so the list is just alphabetical.
+function listSongs()
+{
+    $rows = db()->query('SELECT s.id, s.title, s.media_id, m.size FROM ' . t('songs') . ' s JOIN ' . t('media') . ' m ON m.id = s.media_id ORDER BY s.title, s.id')->fetchAll();
+    return array_map(fn($r) => [
+        'id' => (string) $r['id'],
+        'title' => $r['title'],
+        'src' => mediaSrc($r['media_id']),
+        'fileSize' => (int) $r['size'],
+    ], $rows);
+}
+
+function addSong($title, $mediaId)
+{
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        if (claimMedia($mediaId) !== 'audio') throw new HttpError(400, 'Songs have to be MP3 files.');
+        $title = clip($title, 200);
+        $pdo->prepare('INSERT INTO ' . t('songs') . ' (id, title, media_id) VALUES (?, ?, ?)')
+            ->execute([newId(), $title !== '' ? $title : 'Untitled song', $mediaId]);
+        markChanged();
+        $pdo->commit();
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+    return listSongs();
+}
+
+function deleteSong($id)
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT id, media_id FROM ' . t('songs') . ' WHERE id = ?');
+    $stmt->execute([(string) $id]);
+    $row = $stmt->fetch();
+    if (!$row) throw new HttpError(404, 'Song not found.');
+    $pdo->beginTransaction();
+    $pdo->prepare('DELETE FROM ' . t('songs') . ' WHERE id = ?')->execute([$row['id']]);
+    deleteMedia($row['media_id']);
+    markChanged();
+    $pdo->commit();
+    return listSongs();
+}
+
 // ---------- Media ----------
 function maxUploadBytes()
 {
@@ -487,7 +553,7 @@ function maxUploadBytes()
 function startUpload($size, $mime)
 {
     if (!is_string($mime) || !isset(MEDIA_TYPES[$mime])) {
-        throw new HttpError(400, 'That file type can’t be uploaded. Use a JPG, PNG, WebP or GIF image, or an MP4, WebM or MOV video.');
+        throw new HttpError(400, 'That file type can’t be uploaded. Use a JPG, PNG, WebP or GIF image, an MP4, WebM or MOV video, or an MP3 song.');
     }
     $size = is_numeric($size) ? (int) $size : 0;
     if ($size <= 0) throw new HttpError(400, 'That file is empty.');
@@ -534,7 +600,7 @@ function saveChunk($id, $seq, $data)
     $stmt->execute();
 }
 
-// Checks every piece of an upload arrived and marks it as in use. Returns the kind of ad it makes.
+// Checks every piece of an upload arrived and marks it as in use. Returns what it is: 'image', 'video' or 'audio'.
 function claimMedia($id)
 {
     $media = mediaRow($id);
@@ -561,7 +627,7 @@ function readChunk($id, $seq)
     return $data === false ? null : $data;
 }
 
-// Bytes of images and videos stored in the database.
+// Bytes of images, videos and songs stored in the database.
 function storageUsed()
 {
     return (int) db()->query('SELECT COALESCE(SUM(size), 0) FROM ' . t('media') . ' WHERE ready = 1')->fetchColumn();
