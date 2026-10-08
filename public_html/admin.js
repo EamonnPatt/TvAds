@@ -148,6 +148,8 @@ function localToday() {
 
 function statusOf(ad) {
   const today = localToday();
+  // An ad from a Biztek Media order stays off the TV until it's approved on the Biztek orders page.
+  if (ad.approved === false) return { key: 'pending', label: 'Awaiting approval', hint: 'Approve it on the Biztek Media orders page. It can’t play before that, even if it is switched on here.' };
   if (!ad.enabled) return { key: 'paused', label: 'Paused' };
   if (ad.startDate && ad.startDate > today) return { key: 'scheduled', label: `Starts ${fmtDate(ad.startDate)}` };
   if (ad.endDate && ad.endDate < today) return { key: 'expired', label: 'Ended' };
@@ -327,7 +329,7 @@ function renderList() {
             'div',
             { class: 'spot-title' },
             ad.title,
-            el('span', { class: `badge ${status.key}` }, status.label),
+            el('span', { class: `badge ${status.key}`, title: status.hint }, status.label),
             ad.id === onScreenId ? el('span', { class: 'badge onscreen' }, 'On screen now') : null
           ),
           el('div', { class: 'spot-meta' }, meta.map((m) => el('span', {}, m))),

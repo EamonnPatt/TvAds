@@ -3,7 +3,7 @@
 // the background music, the screen settings, and what the TV last reported. The tables are created on the first
 // request.
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 // Files are stored (and uploaded) in 1 MB pieces, which stays under the smallest MySQL packet and PHP upload
 // limits a host is likely to have.
 const CHUNK_SIZE = 1048576;
@@ -133,8 +133,11 @@ function ensureSchema(PDO $pdo)
         text_color CHAR(7) NOT NULL,
         accent_color CHAR(7) NOT NULL,
         notes TEXT NOT NULL,
+        approved TINYINT(1) NOT NULL DEFAULT 1,
+        order_id VARCHAR(20) NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) $options");
+    addApprovalColumns($pdo);
     // An uploaded image, video or song. ready = 0 while its pieces are still arriving.
     $pdo->exec('CREATE TABLE IF NOT EXISTS ' . t('media') . " (
         id VARCHAR(32) NOT NULL PRIMARY KEY,
@@ -170,6 +173,26 @@ function ensureSchema(PDO $pdo)
         locked_until INT UNSIGNED NOT NULL
     ) $options");
     $pdo->prepare('REPLACE INTO ' . t('settings') . " (name, value) VALUES ('schemaVersion', ?)")->execute([SCHEMA_VERSION]);
+}
+
+// An ad that came from a Biztek Media order has order_id set and starts with approved = 0: the TV skips it until
+// it's approved on the Biztek orders page. Ads made in this admin panel are approved from the start. Nothing in
+// this admin panel can change the flag, so switching such an ad on here doesn't put it on the TV.
+// Databases from before approvals existed get the two columns here. Ads that Biztek orders had already sent, and
+// that haven't started yet, are held for approval too; ones already playing are left alone.
+function addApprovalColumns(PDO $pdo)
+{
+    $columns = $pdo->query('SHOW COLUMNS FROM ' . t('ads'))->fetchAll(PDO::FETCH_COLUMN);
+    if (in_array('approved', $columns, true)) return;
+    try {
+        $pdo->exec('ALTER TABLE ' . t('ads') . ' ADD COLUMN approved TINYINT(1) NOT NULL DEFAULT 1, ADD COLUMN order_id VARCHAR(20) NULL');
+    } catch (PDOException $e) {
+        if ((int) ($e->errorInfo[1] ?? 0) !== 1060) throw $e; // 1060: another request added them a moment ago
+        return;
+    }
+    // Biztek writes "Biztek order BZ-yymmdd-XXXXXX" at the start of the notes of every ad it sends.
+    $pdo->exec('UPDATE ' . t('ads') . ' SET order_id = SUBSTRING(notes, 14, 16), approved = IF(start_date IS NULL OR start_date >= CURDATE(), 0, 1)'
+        . " WHERE notes LIKE 'Biztek order BZ-%'");
 }
 
 function newId()
@@ -354,6 +377,8 @@ function rowToAd(array $r)
         'fit' => $r['fit'],
         'background' => $r['background'],
         'enabled' => (bool) $r['enabled'],
+        'approved' => (bool) $r['approved'],
+        'orderId' => (string) $r['order_id'],
         'startDate' => $r['start_date'] ?: '',
         'endDate' => $r['end_date'] ?: '',
         'playsPerLoop' => (int) $r['plays_per_loop'],

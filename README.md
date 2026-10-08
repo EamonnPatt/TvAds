@@ -30,6 +30,21 @@ site's files never touches the ads.
   with `table_prefix` and then `tv_` (for example `bz_tv_ads`), so the ad
   screen can share a database with another site without clashing.
 
+## Ads bought on Biztek Media
+
+The purchase site (Biztek Media) adds the ads that advertisers buy straight into
+this database. An ad that comes from an order shows an **Awaiting approval**
+badge here, and **it does not play on the TV until it is approved on the Biztek
+Media orders page** (its **Approve** button, which also emails the buyer).
+Switching it on here does not put it on the TV, and nothing in this admin panel
+can approve it. Once it is approved it is an ordinary ad: set its **Plays per
+loop**, pause it, or delete it here.
+
+The first time a newer version of this site is opened it updates its own tables.
+Any ad an order sent earlier that hasn't started yet is put on hold for approval,
+so deploy this site before such an ad's start date. Ads already playing, and ads
+you made here, are not affected.
+
 ## What an ad can be
 
 | Type | Use it for |

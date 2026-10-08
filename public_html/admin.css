@@ -413,6 +413,10 @@ input[type='color'] {
   background: #fbe6de;
   color: var(--error);
 }
+.badge.pending {
+  background: #fff1cc;
+  color: #7a5200;
+}
 .badge.onscreen {
   background: var(--navy);
   color: #fff;

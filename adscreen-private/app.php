@@ -90,8 +90,8 @@ function playlist()
     // Date windows are checked on the TV itself, in the gym's local timezone.
     $ads = [];
     foreach (listAds() as $ad) {
-        if (!$ad['enabled']) continue;
-        unset($ad['notes'], $ad['fileSize']); // admin-only
+        if (!$ad['enabled'] || !$ad['approved']) continue; // an ad from a Biztek order plays only once it's approved
+        unset($ad['notes'], $ad['fileSize'], $ad['orderId'], $ad['approved']); // admin-only
         $ads[] = $ad;
     }
     respond([
