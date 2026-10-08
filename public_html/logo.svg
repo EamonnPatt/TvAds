@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="114 -27 1160 1160" role="img" aria-label="Biztek Media">
+  <defs>
+    <clipPath id="bz-orb"><circle cx="694" cy="553" r="575"/></clipPath>
+  </defs>
+  <g clip-path="url(#bz-orb)">
+    <g fill="#FF5212">
+      <polygon points="615,-100 802,-100 1186,296 815,122"/>
+      <polygon points="340,103 862,338 1133,623 572,366"/>
+      <polygon points="150,355 675,607 994,917 412,669"/>
+      <polygon points="0,666 518,903 821,1200 0,1200"/>
+    </g>
+    <g fill="#D2380A">
+      <polygon points="100,-213 1400,396 1400,585 100,-6"/>
+      <polygon points="100,150 1400,745 1400,955 100,331"/>
+      <polygon points="100,536 1400,1089 1400,1306 100,712"/>
+    </g>
+  </g>
+</svg>

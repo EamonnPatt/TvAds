@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="data:," />
+  <link rel="icon" href="logo.svg" type="image/svg+xml" />
   <title>Ad Screen Admin — Northumberland Fitness</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="admin.css" />
   <link rel="stylesheet" href="textslide.css" />
 </head>
@@ -12,6 +15,10 @@
   <!-- ---------- Login ---------- -->
   <section id="login-view" class="login" hidden>
     <form id="login-form" class="login-card">
+      <div class="brand">
+        <img src="logo.svg" alt="" width="40" height="40" />
+        <span class="wordmark">BIZTEK<span>MEDIA</span></span>
+      </div>
       <h1>Ad Screen</h1>
       <p class="muted">Northumberland Fitness</p>
       <label>
@@ -27,8 +34,9 @@
   <div id="app-view" hidden>
     <header class="topbar">
       <div class="brand">
-        <strong>Ad Screen</strong>
-        <span class="muted">Northumberland Fitness</span>
+        <img src="logo.svg" alt="" width="34" height="34" />
+        <span class="wordmark">BIZTEK<span>MEDIA</span></span>
+        <span class="brand-tag">Ad Screen · Northumberland Fitness</span>
       </div>
       <div id="tv-status" class="tv-status" title="What the TV last reported"></div>
       <div class="topbar-actions">
